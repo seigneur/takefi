@@ -7,11 +7,17 @@ const logger = require('../utils/logger');
 class BitcoinService {
   constructor() {
     // Set network based on environment
-    this.network = process.env.BITCOIN_NETWORK === 'mainnet' 
-      ? bitcoin.networks.bitcoin 
-      : bitcoin.networks.testnet;
+    const networkType = process.env.BITCOIN_NETWORK || 'regtest';
     
-    logger.info(`Bitcoin service initialized for ${process.env.BITCOIN_NETWORK || 'testnet'} network`);
+    if (networkType === 'mainnet') {
+      this.network = bitcoin.networks.bitcoin;
+    } else if (networkType === 'testnet') {
+      this.network = bitcoin.networks.testnet;
+    } else {
+      this.network = bitcoin.networks.regtest;
+    }
+    
+    logger.info(`Bitcoin service initialized for ${networkType} network`);
   }
 
   /**
@@ -27,16 +33,29 @@ class BitcoinService {
       let pubkey = null;
 
       // Check for bech32 (native SegWit)
-      if (address.startsWith('bc1') || address.startsWith('tb1')) {
+      if (address.startsWith('bc1') || address.startsWith('tb1') || address.startsWith('bcrt1')) {
         try {
           decoded = bitcoin.address.fromBech32(address);
           
           // Validate network prefix
-          const expectedPrefix = this.network === bitcoin.networks.bitcoin ? 'bc1' : 'tb1';
+          let expectedPrefix;
+          let networkName;
+          
+          if (this.network === bitcoin.networks.bitcoin) {
+            expectedPrefix = 'bc1';
+            networkName = 'mainnet';
+          } else if (this.network === bitcoin.networks.testnet) {
+            expectedPrefix = 'tb1';
+            networkName = 'testnet';
+          } else if (this.network === bitcoin.networks.regtest) {
+            expectedPrefix = 'bcrt1';
+            networkName = 'regtest';
+          }
+          
           if (!address.startsWith(expectedPrefix)) {
             return {
               isValid: false,
-              error: `Wrong network: expected ${expectedPrefix} prefix for ${this.network === bitcoin.networks.bitcoin ? 'mainnet' : 'testnet'}`
+              error: `Wrong network: expected ${expectedPrefix} prefix for ${networkName}`
             };
           }
           
