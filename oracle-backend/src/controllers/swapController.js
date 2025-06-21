@@ -260,34 +260,5 @@ router.post('/reveal-preimage/:swapId',
   }
 );
 
-/**
- * @route GET /api/oracle/stats
- * @desc Get oracle statistics
- * @access Public
- */
-router.get('/stats', async (req, res) => {
-  try {
-    // TODO: Implement statistics aggregation
-    const stats = {
-      totalSwaps: 0,
-      activeSwaps: 0,
-      completedSwaps: 0,
-      expiredSwaps: 0,
-      totalVolume: 0
-    };
-
-    res.json({
-      success: true,
-      data: stats
-    });
-
-  } catch (error) {
-    logger.error('Error retrieving stats:', error);
-    res.status(500).json({
-      success: false,
-      error: 'Internal server error'
-    });
-  }
-});
 
 module.exports = router;
