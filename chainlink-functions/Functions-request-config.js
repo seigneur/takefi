@@ -6,9 +6,9 @@ const requestConfig = {
   codeLocation: Location.Inline,
   secrets: { AWS_ACCESS_KEY_ID: process.env.AWS_ACCESS_KEY_ID ?? "", AWS_SECRET_ACCESS_KEY: process.env.AWS_SECRET_ACCESS_KEY ?? "" },
   secretsLocation: Location.DONHosted,
-  args: [process.env.AWS_REGION, process.env.AWS_SECRET_ARN],
+  args: [process.env.AWS_REGION ?? "", process.env.AWS_SECRET_ARN ?? ""],
   codeLanguage: CodeLanguage.JavaScript,
-  expectedReturnType: ReturnType.uint256,
+  expectedReturnType: ReturnType.string,
 }
 
 module.exports = requestConfig;
