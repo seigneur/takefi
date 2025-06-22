@@ -1,4 +1,4 @@
-const { createSignedFetcher } = await import("npm:aws-sigv4-fetch");
+const { createSignedFetcher } = await import("npm:aws-sigv4-fetch@4.0.0");
 
 const signedFetch = createSignedFetcher({
   service: "secretsmanager",
@@ -10,9 +10,11 @@ const signedFetch = createSignedFetcher({
 });
 
 const secretName = args[1];
+const region = args[0] || "ap-southeast-1";
+const url = `https://secretsmanager.${region}.amazonaws.com/`;
 
 try {
-  const response = await signedFetch("https://secretsmanager.ap-southeast-1.amazonaws.com/", {
+  const response = await signedFetch(url, {
     method: "POST",
     headers: {
       "Content-Type": "application/x-amz-json-1.1",
