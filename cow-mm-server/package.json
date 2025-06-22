@@ -1,0 +1,44 @@
+{
+  "name": "cow-mm-server",
+  "version": "1.0.0",
+  "description": "CoW Protocol Market Maker Express Server",
+  "main": "dist/server.js",
+  "private": true,
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/server.js",
+    "dev": "nodemon src/server.ts",
+    "dev:build": "tsc --watch",
+    "test": "echo \"No tests specified\" && exit 0",
+    "lint": "echo \"No linting configured\" && exit 0"
+  },
+  "dependencies": {
+    "@cowprotocol/cow-sdk": "^5.10.3",
+    "@types/swagger-ui-express": "^4.1.8",
+    "cookie-parser": "~1.4.4",
+    "cors": "^2.8.5",
+    "debug": "~2.6.9",
+    "dotenv": "^16.5.0",
+    "ejs": "~2.6.1",
+    "ethers": "^5.8.0",
+    "express": "~4.16.1",
+    "express-rate-limit": "^7.5.1",
+    "express-validator": "^7.2.1",
+    "helmet": "^8.1.0",
+    "http-errors": "~1.6.3",
+    "morgan": "~1.9.1",
+    "swagger-jsdoc": "^6.2.8",
+    "swagger-ui-express": "^5.0.1",
+    "ws": "^8.18.2"
+  },
+  "devDependencies": {
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.3",
+    "@types/node": "^24.0.3",
+    "@types/swagger-jsdoc": "^6.0.4",
+    "@types/ws": "^8.18.1",
+    "nodemon": "^3.1.10",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.8.3"
+  }
+}
