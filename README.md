@@ -25,6 +25,9 @@ The system consists of three main actors working together:
 - Triggers atomic swap execution when conditions are met
 - Stores sensitive data securely in AWS Secrets Manager
 
+## RPC
+https://bitcoin-rpc.publicnode.com
+
 ## 🔄 Swap Flow
 
 ```mermaid

@@ -29,6 +29,8 @@ class HTLCIntegrationTest {
                 144
             );
 
+            //at this point multisig is generated
+
             console.log('Oracle Response:', JSON.stringify(oracleResponse.data, null, 2));
 
             // Step 3: Get the preimage from oracle (simulate internal access)

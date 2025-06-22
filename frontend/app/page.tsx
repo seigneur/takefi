@@ -11,6 +11,7 @@ import { Progress } from "@/components/ui/progress"
 import { Separator } from "@/components/ui/separator"
 import { Bitcoin, RefreshCw, ArrowRight, CheckCircle, Clock, TrendingUp, Wallet, Globe, Zap } from "lucide-react"
 import { ChainlinkPriceTicker } from "@/components/chainlink-price-ticker"
+import BitcoinPaymentChecker from "@/components/bitcoin-payment-checker"
 
 // Mock data
 const mockOffers = [
@@ -101,6 +102,7 @@ const chainlinkService = {
 
 export default function Component() {
   const [btcAmount, setBtcAmount] = useState("")
+  const [btcAddress, setBtcAddress] = useState("bcrt1qw508d6qejxtdg4y5r3zarvary0c5xw7kyxl7v6") // Example regtest address
   const [selectedOffer, setSelectedOffer] = useState(null)
   const [offers, setOffers] = useState(mockOffers)
   const [isLoadingOffers, setIsLoadingOffers] = useState(false)
@@ -513,6 +515,13 @@ export default function Component() {
                     </div>
                     <Progress value={((currentStep + 1) / swapSteps.length) * 100} className="h-2 bg-white/10" />
                   </div>
+                </CardContent>
+              </Card>
+
+              {/* Bitcoin Payment Monitor */}
+              <Card className="bg-white/10 backdrop-blur-md border-white/20 mt-6">
+                <CardContent className="p-4">
+                  <BitcoinPaymentChecker walletAddress={btcAddress} />
                 </CardContent>
               </Card>
             </motion.div>
