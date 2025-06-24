@@ -10,8 +10,8 @@ class BitcoinRPCClient {
             protocol: options.protocol || 'http',
             user: options.user || 'devuser',
             pass: options.pass || 'devpass',
-            host: options.host || '172.30.112.1',
-            port: options.port || 18443, // regtest default port
+            host: options.host || '127.0.0.1',
+            port: options.port || 18332, // testnet default port (was 18443 for regtest)
         };
 
         this.currentWallet = null; // Track current wallet
