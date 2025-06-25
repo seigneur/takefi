@@ -1,30 +1,48 @@
-"use client"
+"use client";
 
-import { useState, useEffect } from "react"
-import { motion, AnimatePresence } from "framer-motion"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Badge } from "@/components/ui/badge"
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
-import { Progress } from "@/components/ui/progress"
-import { Separator } from "@/components/ui/separator"
-import { Bitcoin, RefreshCw, ArrowRight, CheckCircle, Clock, TrendingUp, Wallet, Globe, Zap } from "lucide-react"
-import { ChainlinkPriceTicker } from "@/components/chainlink-price-ticker"
-import BitcoinPaymentChecker from "@/components/bitcoin-payment-checker"
+import { useState, useEffect } from "react";
+import { motion, AnimatePresence } from "framer-motion";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Progress } from "@/components/ui/progress";
+import { Separator } from "@/components/ui/separator";
+import {
+  Bitcoin,
+  RefreshCw,
+  ArrowRight,
+  CheckCircle,
+  Clock,
+  TrendingUp,
+  Wallet,
+  Globe,
+  Zap,
+} from "lucide-react";
+import { ChainlinkPriceTicker } from "@/components/chainlink-price-ticker";
+import BitcoinPaymentChecker from "@/components/bitcoin-payment-checker";
 
 // API imports
-import { 
-  oracleAPI, 
-  generateOffersFromQuotes, 
+import {
+  oracleAPI,
+  generateOffersFromQuotes,
   btcToSatoshis,
   type MarketMakerOffer,
-  type CreatePreimageResponse 
-} from "@/lib/api"
+  type CreatePreimageResponse,
+} from "@/lib/api";
 
 // Bitcoin wallet integration
-import { useBitcoinWallet, formatBitcoinAddress } from "@/hooks/use-bitcoin-wallet"
-import BitcoinFunding from "@/components/bitcoin-funding-component"
+import {
+  useBitcoinWallet,
+  formatBitcoinAddress,
+} from "@/hooks/use-bitcoin-wallet";
+// import BitcoinFunding from "@/components/bitcoin-funding-component"
 
 const swapSteps = [
   { id: 1, name: "Offer Confirmed", status: "pending", icon: CheckCircle },
@@ -32,23 +50,25 @@ const swapSteps = [
   { id: 3, name: "BTC Locked", status: "pending", icon: Wallet },
   { id: 4, name: "Oracle Processing", status: "pending", icon: Globe },
   { id: 5, name: "RWA Tokens Received", status: "pending", icon: TrendingUp },
-]
+];
 
 // Chainlink Price Feed Integration
-const CHAINLINK_BTC_USD_FEED = "0xF4030086522a5bEEa4988F8cA5B36dbC97BeE88c" // Mainnet BTC/USD
-const CHAINLINK_API_KEY = process.env.NEXT_PUBLIC_CHAINLINK_API_KEY || "demo"
+const CHAINLINK_BTC_USD_FEED = "0xF4030086522a5bEEa4988F8cA5B36dbC97BeE88c"; // Mainnet BTC/USD
+const CHAINLINK_API_KEY = process.env.NEXT_PUBLIC_CHAINLINK_API_KEY || "demo";
 
 const fetchChainlinkPrice = async (feedAddress: string) => {
   try {
     // Using Chainlink's price feed API (in production, you'd use Web3 to read directly from contract)
-    const response = await fetch(`https://api.chain.link/v1/feeds/${feedAddress}`)
-    const data = await response.json()
-    return data.answer / 100000000 // Chainlink returns price with 8 decimals
+    const response = await fetch(
+      `https://api.chain.link/v1/feeds/${feedAddress}`
+    );
+    const data = await response.json();
+    return data.answer / 100000000; // Chainlink returns price with 8 decimals
   } catch (error) {
-    console.error("Error fetching Chainlink price:", error)
-    return null
+    console.error("Error fetching Chainlink price:", error);
+    return null;
   }
-}
+};
 
 // Mock Chainlink Service
 const chainlinkService = {
@@ -59,9 +79,9 @@ const chainlinkService = {
         resolve({
           BTC: { price: 43250, lastUpdated: new Date() },
           COW: { price: 0.25, lastUpdated: new Date() },
-        })
-      }, 500)
-    })
+        });
+      }, 500);
+    });
   },
   getNetworkStatus: async () => {
     // Simulate fetching network status
@@ -70,272 +90,285 @@ const chainlinkService = {
         resolve({
           blockNumber: 1234567,
           gasPrice: "50",
-        })
-      }, 300)
-    })
+        });
+      }, 300);
+    });
   },
-}
+};
 
 export default function Component() {
   // Bitcoin wallet integration
-  const { address: btcAddress, isConnected: btcConnected } = useBitcoinWallet()
-  
+  const { address: btcAddress, isConnected: btcConnected } = useBitcoinWallet();
+
   // Form inputs
-  const [btcAmount, setBtcAmount] = useState("")
-  const [userEthAddress, setUserEthAddress] = useState("") // User's Ethereum address for receiving tokens
-  
+  const [btcAmount, setBtcAmount] = useState("");
+  const [userEthAddress, setUserEthAddress] = useState(""); // User's Ethereum address for receiving tokens
+
   // Real API data
-  const [htlcAddress, setHtlcAddress] = useState("") // Real Bitcoin HTLC address from Oracle
-  const [realSwapId, setRealSwapId] = useState("") // Real swap ID from Oracle
-  const [selectedOffer, setSelectedOffer] = useState<MarketMakerOffer | null>(null)
-  const [offers, setOffers] = useState<MarketMakerOffer[]>([])
-  const [isLoadingOffers, setIsLoadingOffers] = useState(false)
-  
+  const [htlcAddress, setHtlcAddress] = useState(""); // Real Bitcoin HTLC address from Oracle
+  const [realSwapId, setRealSwapId] = useState(""); // Real swap ID from Oracle
+  const [selectedOffer, setSelectedOffer] = useState<MarketMakerOffer | null>(
+    null
+  );
+  const [offers, setOffers] = useState<MarketMakerOffer[]>([]);
+  const [isLoadingOffers, setIsLoadingOffers] = useState(false);
+
   // UI state
-  const [showConfirmModal, setShowConfirmModal] = useState(false)
-  const [swapProgress, setSwapProgress] = useState(swapSteps)
-  const [currentStep, setCurrentStep] = useState(0)
-  const [isSwapping, setIsSwapping] = useState(false)
-  const [swapCompleted, setSwapCompleted] = useState(false)
-  
+  const [showConfirmModal, setShowConfirmModal] = useState(false);
+  const [swapProgress, setSwapProgress] = useState(swapSteps);
+  const [currentStep, setCurrentStep] = useState(0);
+  const [isSwapping, setIsSwapping] = useState(false);
+  const [swapCompleted, setSwapCompleted] = useState(false);
+
   // Prices
-  const [btcPrice, setBtcPrice] = useState(0)
-  const [cowPrice, setCowPrice] = useState(0)
-  const [priceLoading, setPriceLoading] = useState(true)
-  const [lastPriceUpdate, setLastPriceUpdate] = useState(new Date())
-  const [btcPriceData, setBtcPriceData] = useState(null)
-  const [cowPriceData, setCowPriceData] = useState(null)
-  const [networkStatus, setNetworkStatus] = useState({ blockNumber: 0, gasPrice: "0" })
+  const [btcPrice, setBtcPrice] = useState(0);
+  const [cowPrice, setCowPrice] = useState(0);
+  const [priceLoading, setPriceLoading] = useState(true);
+  const [lastPriceUpdate, setLastPriceUpdate] = useState(new Date());
+  const [btcPriceData, setBtcPriceData] = useState(null);
+  const [cowPriceData, setCowPriceData] = useState(null);
+  const [networkStatus, setNetworkStatus] = useState({
+    blockNumber: 0,
+    gasPrice: "0",
+  });
 
   const fetchRealTimePrices = async () => {
-    setPriceLoading(true)
+    setPriceLoading(true);
     try {
-      const pricesData = await chainlinkService.getAllPrices()
+      const pricesData = await chainlinkService.getAllPrices();
 
       // Extract price values and check for staleness
-      const btcData = pricesData.BTC
-      const cowData = pricesData.COW
+      const btcData = pricesData.BTC;
+      const cowData = pricesData.COW;
 
       if (btcData) {
-        setBtcPrice(btcData.price)
-        setBtcPriceData(btcData)
+        setBtcPrice(btcData.price);
+        setBtcPriceData(btcData);
       }
 
       if (cowData) {
-        setCowPrice(cowData.price)
-        setCowPriceData(cowData)
+        setCowPrice(cowData.price);
+        setCowPriceData(cowData);
       }
 
-      setLastPriceUpdate(new Date())
+      setLastPriceUpdate(new Date());
 
       // Update offers with new prices
       if (btcData && cowData) {
-        updateOffersWithRealPrices(btcData.price, cowData.price)
+        updateOffersWithRealPrices(btcData.price, cowData.price);
       }
     } catch (error) {
-      console.error("Error fetching Chainlink prices:", error)
+      console.error("Error fetching Chainlink prices:", error);
       // Fallback to demo prices
-      setBtcPrice(43250)
-      setCowPrice(0.25)
+      setBtcPrice(43250);
+      setCowPrice(0.25);
     } finally {
-      setPriceLoading(false)
+      setPriceLoading(false);
     }
-  }
+  };
 
   const updateOffersWithRealPrices = (btcPrice: number, cowPrice: number) => {
     // This function is kept for backward compatibility with Chainlink price updates
     // Real offers are now fetched from the API
-  }
+  };
 
   // Validate Ethereum address format
   const isValidEthAddress = (address: string): boolean => {
-    return /^0x[a-fA-F0-9]{40}$/.test(address)
-  }
+    return /^0x[a-fA-F0-9]{40}$/.test(address);
+  };
 
   // Fetch real offers from API
   const refreshOffers = async () => {
     if (!btcAmount || parseFloat(btcAmount) <= 0) {
-      setOffers([])
-      return
+      setOffers([]);
+      return;
     }
 
     if (!userEthAddress || !isValidEthAddress(userEthAddress)) {
-      setOffers([])
-      return
+      setOffers([]);
+      return;
     }
 
-    setIsLoadingOffers(true)
+    setIsLoadingOffers(true);
     try {
-      console.log('Fetching real offers from API...')
-      const realOffers = await generateOffersFromQuotes(btcAmount, userEthAddress)
-      setOffers(realOffers)
-      console.log('Real offers received:', realOffers)
+      console.log("Fetching real offers from API...");
+      const realOffers = await generateOffersFromQuotes(
+        btcAmount,
+        userEthAddress
+      );
+      setOffers(realOffers);
+      console.log("Real offers received:", realOffers);
     } catch (error) {
-      console.error('Failed to fetch offers:', error)
+      console.error("Failed to fetch offers:", error);
       // Keep existing offers on error
     } finally {
-      setIsLoadingOffers(false)
+      setIsLoadingOffers(false);
     }
-  }
+  };
 
   useEffect(() => {
-    fetchRealTimePrices()
+    fetchRealTimePrices();
 
     // Update prices every 30 seconds
-    const priceInterval = setInterval(fetchRealTimePrices, 30000)
+    const priceInterval = setInterval(fetchRealTimePrices, 30000);
 
     // Fetch network status
     const fetchNetworkStatus = async () => {
-      const status = await chainlinkService.getNetworkStatus()
-      setNetworkStatus(status)
-    }
-    fetchNetworkStatus()
+      const status = await chainlinkService.getNetworkStatus();
+      setNetworkStatus(status);
+    };
+    fetchNetworkStatus();
 
     return () => {
-      clearInterval(priceInterval)
+      clearInterval(priceInterval);
       // Clean up swap polling if it exists
       if ((window as any).swapPollInterval) {
-        clearInterval((window as any).swapPollInterval)
+        clearInterval((window as any).swapPollInterval);
       }
-    }
-  }, [])
+    };
+  }, []);
 
   // Auto-refresh offers when amount or address changes
   useEffect(() => {
     const timeoutId = setTimeout(() => {
       if (btcAmount && userEthAddress && isValidEthAddress(userEthAddress)) {
-        refreshOffers()
+        refreshOffers();
       }
-    }, 500) // Debounce for 500ms
+    }, 500); // Debounce for 500ms
 
-    return () => clearTimeout(timeoutId)
-  }, [btcAmount, userEthAddress])
+    return () => clearTimeout(timeoutId);
+  }, [btcAmount, userEthAddress]);
 
   // Poll Oracle for swap status updates
   const pollSwapStatus = async (swapId: string) => {
     try {
-      const swapDetails = await oracleAPI.getSwapDetails(swapId)
-      console.log('Swap status update:', swapDetails.data.status)
-      
+      const swapDetails = await oracleAPI.getSwapDetails(swapId);
+      console.log("Swap status update:", swapDetails.data.status);
+
       switch (swapDetails.data.status) {
-        case 'pending':
+        case "pending":
           // Still waiting for BTC payment
-          updateSwapStep(2, "current")
-          setCurrentStep(2)
-          break
-        case 'btc_received':
+          updateSwapStep(2, "current");
+          setCurrentStep(2);
+          break;
+        case "btc_received":
           // BTC received, oracle processing
-          updateSwapStep(2, "completed")
-          updateSwapStep(3, "current")
-          setCurrentStep(3)
-          break
-        case 'tokens_swapped':
+          updateSwapStep(2, "completed");
+          updateSwapStep(3, "current");
+          setCurrentStep(3);
+          break;
+        case "tokens_swapped":
           // Swap completed successfully
-          updateSwapStep(3, "completed")
-          updateSwapStep(4, "completed")
-          setCurrentStep(4)
-          setSwapCompleted(true)
-          setIsSwapping(false)
+          updateSwapStep(3, "completed");
+          updateSwapStep(4, "completed");
+          setCurrentStep(4);
+          setSwapCompleted(true);
+          setIsSwapping(false);
           // Clear polling
           if ((window as any).swapPollInterval) {
-            clearInterval((window as any).swapPollInterval)
-            delete (window as any).swapPollInterval
+            clearInterval((window as any).swapPollInterval);
+            delete (window as any).swapPollInterval;
           }
-          break
-        case 'mm_failed':
-          console.error('MM Server failed:', swapDetails.data)
-          alert('Swap failed during token exchange. Please contact support.')
-          setIsSwapping(false)
+          break;
+        case "mm_failed":
+          console.error("MM Server failed:", swapDetails.data);
+          alert("Swap failed during token exchange. Please contact support.");
+          setIsSwapping(false);
           // Clear polling
           if ((window as any).swapPollInterval) {
-            clearInterval((window as any).swapPollInterval)
-            delete (window as any).swapPollInterval
+            clearInterval((window as any).swapPollInterval);
+            delete (window as any).swapPollInterval;
           }
-          break
-        case 'expired':
-          console.error('Swap expired')
-          alert('Swap expired. Please create a new swap.')
-          setIsSwapping(false)
+          break;
+        case "expired":
+          console.error("Swap expired");
+          alert("Swap expired. Please create a new swap.");
+          setIsSwapping(false);
           // Clear polling
           if ((window as any).swapPollInterval) {
-            clearInterval((window as any).swapPollInterval)
-            delete (window as any).swapPollInterval
+            clearInterval((window as any).swapPollInterval);
+            delete (window as any).swapPollInterval;
           }
-          break
+          break;
       }
     } catch (error) {
-      console.error('Failed to get swap status:', error)
+      console.error("Failed to get swap status:", error);
     }
-  }
+  };
 
   const handleSwapConfirm = async () => {
-    setShowConfirmModal(false)
-    setIsSwapping(true)
-    
+    setShowConfirmModal(false);
+    setIsSwapping(true);
+
     try {
       // Step 1: Create preimage via Oracle API
-      setCurrentStep(0)
-      updateSwapStep(0, "current")
-      
-      console.log('Creating preimage via Oracle API...')
+      setCurrentStep(0);
+      updateSwapStep(0, "current");
+
+      console.log("Creating preimage via Oracle API...");
       const preimageResponse = await oracleAPI.createPreimage({
         // userBtcAddress will be hardcoded in API service for testing
-        mmPubkey: "026477115981fe981a6918a6297d9803c4dc04f328f22041bedff886bbc2962e01", // Default MM pubkey
+        mmPubkey:
+          "026477115981fe981a6918a6297d9803c4dc04f328f22041bedff886bbc2962e01", // Default MM pubkey
         btcAmount: btcToSatoshis(parseFloat(btcAmount)),
         timelock: 144,
-        userEthAddress: userEthAddress
-      })
+        userEthAddress: userEthAddress,
+      });
 
-      console.log('Preimage created:', preimageResponse)
-      
+      console.log("Preimage created:", preimageResponse);
+
       // Store real swap data
-      setRealSwapId(preimageResponse.data.swapId)
-      setHtlcAddress(preimageResponse.data.htlcAddress)
-      
+      setRealSwapId(preimageResponse.data.swapId);
+      setHtlcAddress(preimageResponse.data.htlcAddress);
+
       // Step 2: Show Bitcoin script created
-      updateSwapStep(0, "completed")
-      updateSwapStep(1, "completed")
-      setCurrentStep(1)
-      
+      updateSwapStep(0, "completed");
+      updateSwapStep(1, "completed");
+      setCurrentStep(1);
+
       // Step 3: Wait for BTC to be locked (this will be manual for now)
-      updateSwapStep(2, "current")
-      setCurrentStep(2)
-      
-      console.log('✅ HTLC Created Successfully!')
-      console.log(`🎯 Send ${btcAmount} BTC to: ${preimageResponse.data.htlcAddress}`)
-      console.log(`🆔 Swap ID: ${preimageResponse.data.swapId}`)
-      
+      updateSwapStep(2, "current");
+      setCurrentStep(2);
+
+      console.log("✅ HTLC Created Successfully!");
+      console.log(
+        `🎯 Send ${btcAmount} BTC to: ${preimageResponse.data.htlcAddress}`
+      );
+      console.log(`🆔 Swap ID: ${preimageResponse.data.swapId}`);
+
       // Start polling for swap status updates
       const pollInterval = setInterval(() => {
-        pollSwapStatus(preimageResponse.data.swapId)
-      }, 5000) // Poll every 5 seconds
-      
-      // Store interval ID to clear later
-      ;(window as any).swapPollInterval = pollInterval
-      
-    } catch (error) {
-      console.error('Swap creation failed:', error)
-      alert(`Failed to create swap: ${error.message}`)
-      setIsSwapping(false)
-    }
-  }
+        pollSwapStatus(preimageResponse.data.swapId);
+      }, 5000); // Poll every 5 seconds
 
-  const updateSwapStep = (stepIndex: number, status: "pending" | "current" | "completed") => {
+      // Store interval ID to clear later
+      (window as any).swapPollInterval = pollInterval;
+    } catch (error) {
+      console.error("Swap creation failed:", error);
+      alert(`Failed to create swap: ${error.message}`);
+      setIsSwapping(false);
+    }
+  };
+
+  const updateSwapStep = (
+    stepIndex: number,
+    status: "pending" | "current" | "completed"
+  ) => {
     setSwapProgress((prev) =>
       prev.map((step, index) => ({
         ...step,
         status: index === stepIndex ? status : step.status,
       }))
-    )
-  }
+    );
+  };
 
   const calculateOutput = (amount, rate) => {
-    return (Number.parseFloat(amount) * rate).toFixed(4)
-  }
+    return (Number.parseFloat(amount) * rate).toFixed(4);
+  };
 
   const formatCurrency = (amount, currency) => {
-    return `${amount} ${currency}`
-  }
+    return `${amount} ${currency}`;
+  };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900">
@@ -355,7 +388,9 @@ export default function Component() {
                 <h1 className="text-2xl font-bold bg-gradient-to-r from-orange-400 via-purple-400 to-blue-400 bg-clip-text text-transparent">
                   TakeFi
                 </h1>
-                <p className="text-xs text-gray-400 -mt-1">Decentralized RWA Trading</p>
+                <p className="text-xs text-gray-400 -mt-1">
+                  Decentralized RWA Trading
+                </p>
               </div>
             </div>
           </div>
@@ -364,26 +399,34 @@ export default function Component() {
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-2">
               <Bitcoin className="h-6 w-6 text-orange-500" />
-              <span className="text-lg font-semibold text-white">BTC → RWA Swap</span>
+              <span className="text-lg font-semibold text-white">
+                BTC → RWA Swap
+              </span>
             </div>
 
             {/* Real-time Price Ticker */}
             <div className="hidden lg:block">
               <ChainlinkPriceTicker
                 onPriceUpdate={(pricesData) => {
-                  if (pricesData.BTC) setBtcPrice(pricesData.BTC.price)
-                  if (pricesData.COW) setCowPrice(pricesData.COW.price)
-                  setLastPriceUpdate(new Date())
+                  if (pricesData.BTC) setBtcPrice(pricesData.BTC.price);
+                  if (pricesData.COW) setCowPrice(pricesData.COW.price);
+                  setLastPriceUpdate(new Date());
                 }}
               />
             </div>
 
             <div className="flex items-center space-x-4">
-              <Badge variant="outline" className="bg-orange-500/20 text-orange-400 border-orange-500/30">
+              <Badge
+                variant="outline"
+                className="bg-orange-500/20 text-orange-400 border-orange-500/30"
+              >
                 <Bitcoin className="h-3 w-3 mr-1" />
                 tb1pmj9...79wnn (Test)
               </Badge>
-              <Badge variant="outline" className="bg-blue-500/20 text-blue-400 border-blue-500/30">
+              <Badge
+                variant="outline"
+                className="bg-blue-500/20 text-blue-400 border-blue-500/30"
+              >
                 <div className="w-2 h-2 bg-blue-400 rounded-full mr-2 animate-pulse" />
                 Testing Mode
               </Badge>
@@ -399,9 +442,9 @@ export default function Component() {
         <div className="container mx-auto px-4 py-3">
           <ChainlinkPriceTicker
             onPriceUpdate={(pricesData) => {
-              if (pricesData.BTC) setBtcPrice(pricesData.BTC.price)
-              if (pricesData.COW) setCowPrice(pricesData.COW.price)
-              setLastPriceUpdate(new Date())
+              if (pricesData.BTC) setBtcPrice(pricesData.BTC.price);
+              if (pricesData.COW) setCowPrice(pricesData.COW.price);
+              setLastPriceUpdate(new Date());
             }}
           />
         </div>
@@ -428,10 +471,16 @@ export default function Component() {
                   {/* BTC Input */}
                   <div className="space-y-2">
                     <div className="flex justify-between items-center">
-                      <label className="text-sm font-medium text-gray-300">Amount to Swap</label>
+                      <label className="text-sm font-medium text-gray-300">
+                        Amount to Swap
+                      </label>
                       {btcAmount && btcPrice > 0 && (
                         <span className="text-sm text-gray-400">
-                          ≈ ${(Number.parseFloat(btcAmount) * btcPrice).toLocaleString()} USD
+                          ≈ $
+                          {(
+                            Number.parseFloat(btcAmount) * btcPrice
+                          ).toLocaleString()}{" "}
+                          USD
                         </span>
                       )}
                     </div>
@@ -449,19 +498,26 @@ export default function Component() {
                       </span>
                     </div>
                     <p className="text-xs text-gray-500 mt-1">
-                      💡 For testing: Use 0.00001 BTC (1000 sats) or smaller amounts for reliable swaps
+                      💡 For testing: Use 0.00001 BTC (1000 sats) or smaller
+                      amounts for reliable swaps
                     </p>
                   </div>
 
                   {/* Ethereum Address Input */}
                   <div className="space-y-2">
                     <div className="flex justify-between items-center">
-                      <label className="text-sm font-medium text-gray-300">Your Ethereum Address</label>
+                      <label className="text-sm font-medium text-gray-300">
+                        Your Ethereum Address
+                      </label>
                       {userEthAddress && !isValidEthAddress(userEthAddress) && (
-                        <span className="text-sm text-red-400">Invalid address format</span>
+                        <span className="text-sm text-red-400">
+                          Invalid address format
+                        </span>
                       )}
                       {userEthAddress && isValidEthAddress(userEthAddress) && (
-                        <span className="text-sm text-green-400">Valid address ✓</span>
+                        <span className="text-sm text-green-400">
+                          Valid address ✓
+                        </span>
                       )}
                     </div>
                     <div className="relative">
@@ -472,14 +528,19 @@ export default function Component() {
                         value={userEthAddress}
                         onChange={(e) => setUserEthAddress(e.target.value)}
                         className={`pl-12 text-lg h-14 bg-white/5 border-white/20 text-white placeholder:text-gray-400 focus:border-purple-500/50 ${
-                          userEthAddress && !isValidEthAddress(userEthAddress) ? 'border-red-500/50' : ''
+                          userEthAddress && !isValidEthAddress(userEthAddress)
+                            ? "border-red-500/50"
+                            : ""
                         } ${
-                          userEthAddress && isValidEthAddress(userEthAddress) ? 'border-green-500/50' : ''
+                          userEthAddress && isValidEthAddress(userEthAddress)
+                            ? "border-green-500/50"
+                            : ""
                         }`}
                       />
                     </div>
                     <p className="text-xs text-gray-500">
-                      Enter your Ethereum wallet address where you want to receive the COW tokens
+                      Enter your Ethereum wallet address where you want to
+                      receive the COW tokens
                     </p>
                   </div>
 
@@ -494,7 +555,9 @@ export default function Component() {
 
                   {/* Refresh Offers */}
                   <div className="flex justify-between items-center">
-                    <h3 className="text-lg font-semibold text-white">Available Offers</h3>
+                    <h3 className="text-lg font-semibold text-white">
+                      Available Offers
+                    </h3>
                     <Button
                       onClick={refreshOffers}
                       disabled={isLoadingOffers}
@@ -502,7 +565,11 @@ export default function Component() {
                       size="sm"
                       className="bg-white/10 border-white/20 text-white hover:bg-white/20"
                     >
-                      <RefreshCw className={`h-4 w-4 mr-2 ${isLoadingOffers ? "animate-spin" : ""}`} />
+                      <RefreshCw
+                        className={`h-4 w-4 mr-2 ${
+                          isLoadingOffers ? "animate-spin" : ""
+                        }`}
+                      />
                       Refresh
                     </Button>
                   </div>
@@ -512,7 +579,10 @@ export default function Component() {
                     {isLoadingOffers
                       ? // Loading skeletons
                         Array.from({ length: 3 }).map((_, i) => (
-                          <Card key={i} className="bg-white/5 border-white/10 animate-pulse">
+                          <Card
+                            key={i}
+                            className="bg-white/5 border-white/10 animate-pulse"
+                          >
                             <CardContent className="p-4">
                               <div className="h-4 bg-white/10 rounded mb-2" />
                               <div className="h-6 bg-white/10 rounded mb-3" />
@@ -524,18 +594,28 @@ export default function Component() {
                           </Card>
                         ))
                       : offers.map((offer) => (
-                          <motion.div key={offer.id} whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}>
+                          <motion.div
+                            key={offer.id}
+                            whileHover={{ scale: 1.02 }}
+                            whileTap={{ scale: 0.98 }}
+                          >
                             <Card
                               className={`cursor-pointer transition-all duration-200 ${
                                 offer.isBest
                                   ? "bg-gradient-to-br from-orange-500/20 to-purple-500/20 border-orange-500/50 ring-2 ring-orange-500/30"
                                   : "bg-white/5 border-white/10 hover:bg-white/10"
-                              } ${selectedOffer?.id === offer.id ? "ring-2 ring-blue-500/50" : ""}`}
+                              } ${
+                                selectedOffer?.id === offer.id
+                                  ? "ring-2 ring-blue-500/50"
+                                  : ""
+                              }`}
                               onClick={() => setSelectedOffer(offer)}
                             >
                               <CardContent className="p-4">
                                 <div className="flex items-center justify-between mb-2">
-                                  <span className="font-medium text-white">{offer.mmName}</span>
+                                  <span className="font-medium text-white">
+                                    {offer.mmName}
+                                  </span>
                                   <div className="flex items-center space-x-2">
                                     {offer.realTimeRate && (
                                       <Badge
@@ -545,7 +625,7 @@ export default function Component() {
                                         Live
                                       </Badge>
                                     )}
-                                    {offer.mmName.includes('Demo MM') && (
+                                    {offer.mmName.includes("Demo MM") && (
                                       <Badge
                                         variant="outline"
                                         className="bg-yellow-500/20 text-yellow-400 border-yellow-500/30 text-xs"
@@ -565,25 +645,37 @@ export default function Component() {
                                 <div className="space-y-2 text-sm">
                                   <div className="flex justify-between">
                                     <span className="text-gray-400">Rate:</span>
-                                    <span className="text-white font-medium">{offer.rate.toFixed(6)} COW/BTC</span>
+                                    <span className="text-white font-medium">
+                                      {offer.rate.toFixed(6)} COW/BTC
+                                    </span>
                                   </div>
 
                                   {btcAmount && (
                                     <div className="flex justify-between">
-                                      <span className="text-gray-400">You get:</span>
+                                      <span className="text-gray-400">
+                                        You get:
+                                      </span>
                                       <span className="text-green-400 font-medium">
-                                        {calculateOutput(btcAmount, offer.rate)} COW
+                                        {calculateOutput(btcAmount, offer.rate)}{" "}
+                                        COW
                                       </span>
                                     </div>
                                   )}
 
                                   {btcAmount && cowPrice > 0 && (
                                     <div className="flex justify-between">
-                                      <span className="text-gray-400">USD Value:</span>
+                                      <span className="text-gray-400">
+                                        USD Value:
+                                      </span>
                                       <span className="text-blue-400 font-medium">
                                         $
                                         {(
-                                          Number.parseFloat(calculateOutput(btcAmount, offer.rate)) * cowPrice
+                                          Number.parseFloat(
+                                            calculateOutput(
+                                              btcAmount,
+                                              offer.rate
+                                            )
+                                          ) * cowPrice
                                         ).toFixed(2)}
                                       </span>
                                     </div>
@@ -591,17 +683,25 @@ export default function Component() {
 
                                   <div className="flex justify-between">
                                     <span className="text-gray-400">Fee:</span>
-                                    <span className="text-white">{offer.fee}%</span>
+                                    <span className="text-white">
+                                      {offer.fee}%
+                                    </span>
                                   </div>
 
                                   <div className="flex justify-between">
                                     <span className="text-gray-400">Time:</span>
-                                    <span className="text-white">{offer.estimatedTime}</span>
+                                    <span className="text-white">
+                                      {offer.estimatedTime}
+                                    </span>
                                   </div>
 
                                   <div className="flex justify-between">
-                                    <span className="text-gray-400">Reliability:</span>
-                                    <span className="text-green-400">{offer.reliability}%</span>
+                                    <span className="text-gray-400">
+                                      Reliability:
+                                    </span>
+                                    <span className="text-green-400">
+                                      {offer.reliability}%
+                                    </span>
                                   </div>
                                 </div>
                               </CardContent>
@@ -614,19 +714,25 @@ export default function Component() {
                   <Button
                     onClick={() => setShowConfirmModal(true)}
                     disabled={
-                      !btcAmount || 
-                      !userEthAddress || 
-                      !selectedOffer || 
+                      !btcAmount ||
+                      !userEthAddress ||
+                      !selectedOffer ||
                       Number.parseFloat(btcAmount) <= 0 ||
                       !isValidEthAddress(userEthAddress)
                     }
                     className="w-full h-12 bg-gradient-to-r from-orange-500 to-purple-600 hover:from-orange-600 hover:to-purple-700 text-white font-semibold text-lg disabled:opacity-50"
                   >
                     <ArrowRight className="h-5 w-5 mr-2" />
-                    {!userEthAddress || !isValidEthAddress(userEthAddress) 
-                      ? "Enter valid Ethereum address" 
-                      : `Swap ${btcAmount || "0"} BTC → ${selectedOffer ? calculateOutput(btcAmount || "0", selectedOffer.rate) : "0"} COW`
-                    }
+                    {!userEthAddress || !isValidEthAddress(userEthAddress)
+                      ? "Enter valid Ethereum address"
+                      : `Swap ${btcAmount || "0"} BTC → ${
+                          selectedOffer
+                            ? calculateOutput(
+                                btcAmount || "0",
+                                selectedOffer.rate
+                              )
+                            : "0"
+                        } COW`}
                   </Button>
                 </CardContent>
               </Card>
@@ -635,7 +741,11 @@ export default function Component() {
 
           {/* Swap Progress */}
           {isSwapping && !swapCompleted && (
-            <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="max-w-2xl mx-auto">
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="max-w-2xl mx-auto"
+            >
               <Card className="bg-white/10 backdrop-blur-md border-white/20">
                 <CardHeader>
                   <CardTitle className="text-xl text-white flex items-center">
@@ -643,12 +753,20 @@ export default function Component() {
                     Swap in Progress
                   </CardTitle>
                   <div className="space-y-1">
-                    <p className="text-gray-400">Swap ID: {realSwapId || "Creating..."}</p>
+                    <p className="text-gray-400">
+                      Swap ID: {realSwapId || "Creating..."}
+                    </p>
                     {htlcAddress && (
                       <div className="bg-orange-500/10 border border-orange-500/20 rounded-lg p-3">
-                        <p className="text-orange-400 font-semibold text-sm">🎯 Send Bitcoin to:</p>
-                        <p className="text-white font-mono text-xs break-all">{htlcAddress}</p>
-                        <p className="text-orange-300 text-xs mt-1">Amount: {btcAmount} BTC</p>
+                        <p className="text-orange-400 font-semibold text-sm">
+                          🎯 Send Bitcoin to:
+                        </p>
+                        <p className="text-white font-mono text-xs break-all">
+                          {htlcAddress}
+                        </p>
+                        <p className="text-orange-300 text-xs mt-1">
+                          Amount: {btcAmount} BTC
+                        </p>
                       </div>
                     )}
                   </div>
@@ -656,16 +774,19 @@ export default function Component() {
                 <CardContent className="space-y-6">
                   <div className="space-y-4">
                     {swapProgress.map((step, index) => {
-                      const Icon = step.icon
+                      const Icon = step.icon;
                       return (
-                        <div key={step.id} className="flex items-center space-x-4">
+                        <div
+                          key={step.id}
+                          className="flex items-center space-x-4"
+                        >
                           <div
                             className={`flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center ${
                               step.status === "completed"
                                 ? "bg-green-500/20 text-green-400"
                                 : step.status === "current"
-                                  ? "bg-orange-500/20 text-orange-400 animate-pulse"
-                                  : "bg-gray-500/20 text-gray-500"
+                                ? "bg-orange-500/20 text-orange-400 animate-pulse"
+                                : "bg-gray-500/20 text-gray-500"
                             }`}
                           >
                             <Icon className="h-5 w-5" />
@@ -676,25 +797,35 @@ export default function Component() {
                                 step.status === "completed"
                                   ? "text-green-400"
                                   : step.status === "current"
-                                    ? "text-orange-400"
-                                    : "text-gray-400"
+                                  ? "text-orange-400"
+                                  : "text-gray-400"
                               }`}
                             >
                               {step.name}
                             </p>
                           </div>
-                          {step.status === "completed" && <CheckCircle className="h-5 w-5 text-green-400" />}
+                          {step.status === "completed" && (
+                            <CheckCircle className="h-5 w-5 text-green-400" />
+                          )}
                         </div>
-                      )
+                      );
                     })}
                   </div>
 
                   <div className="space-y-2">
                     <div className="flex justify-between text-sm">
                       <span className="text-gray-400">Progress</span>
-                      <span className="text-white">{Math.round(((currentStep + 1) / swapSteps.length) * 100)}%</span>
+                      <span className="text-white">
+                        {Math.round(
+                          ((currentStep + 1) / swapSteps.length) * 100
+                        )}
+                        %
+                      </span>
                     </div>
-                    <Progress value={((currentStep + 1) / swapSteps.length) * 100} className="h-2 bg-white/10" />
+                    <Progress
+                      value={((currentStep + 1) / swapSteps.length) * 100}
+                      className="h-2 bg-white/10"
+                    />
                   </div>
                 </CardContent>
               </Card>
@@ -705,9 +836,12 @@ export default function Component() {
                   <div className="bg-blue-500/10 border border-blue-500/20 rounded-lg p-4">
                     <div className="flex items-center justify-between">
                       <div>
-                        <p className="text-blue-400 font-semibold">Testing Mode - Manual Funding Required</p>
+                        <p className="text-blue-400 font-semibold">
+                          Testing Mode - Manual Funding Required
+                        </p>
                         <p className="text-sm text-gray-300">
-                          Send {btcAmount} BTC manually to the HTLC address below to continue the swap
+                          Send {btcAmount} BTC manually to the HTLC address
+                          below to continue the swap
                         </p>
                         <p className="text-xs text-gray-400 mt-1 font-mono break-all">
                           HTLC Address: {htlcAddress}
@@ -747,28 +881,41 @@ export default function Component() {
                     <CheckCircle className="h-10 w-10 text-green-400" />
                   </motion.div>
 
-                  <h2 className="text-2xl font-bold text-white mb-2">Swap Completed!</h2>
-                  <p className="text-gray-300 mb-6">Your Bitcoin has been successfully swapped for RWA tokens.</p>
+                  <h2 className="text-2xl font-bold text-white mb-2">
+                    Swap Completed!
+                  </h2>
+                  <p className="text-gray-300 mb-6">
+                    Your Bitcoin has been successfully swapped for RWA tokens.
+                  </p>
 
                   <div className="bg-white/5 rounded-lg p-4 mb-6">
                     <div className="grid grid-cols-2 gap-4 text-sm">
                       <div>
                         <p className="text-gray-400">Swapped</p>
-                        <p className="text-white font-medium">{btcAmount} BTC</p>
+                        <p className="text-white font-medium">
+                          {btcAmount} BTC
+                        </p>
                       </div>
                       <div>
                         <p className="text-gray-400">Received</p>
                         <p className="text-green-400 font-medium">
-                          {selectedOffer ? calculateOutput(btcAmount, selectedOffer.rate) : "0"} COW
+                          {selectedOffer
+                            ? calculateOutput(btcAmount, selectedOffer.rate)
+                            : "0"}{" "}
+                          COW
                         </p>
                       </div>
                       <div>
                         <p className="text-gray-400">Swap ID</p>
-                        <p className="text-white font-mono text-xs">{realSwapId}</p>
+                        <p className="text-white font-mono text-xs">
+                          {realSwapId}
+                        </p>
                       </div>
                       <div>
                         <p className="text-gray-400">Status</p>
-                        <Badge className="bg-green-500/20 text-green-400 border-green-500/30">Completed</Badge>
+                        <Badge className="bg-green-500/20 text-green-400 border-green-500/30">
+                          Completed
+                        </Badge>
                       </div>
                     </div>
                   </div>
@@ -806,7 +953,9 @@ export default function Component() {
                   <div className="grid grid-cols-2 gap-4 text-sm">
                     <div>
                       <p className="text-gray-400">You Pay</p>
-                      <p className="text-white font-medium text-lg">{btcAmount} BTC</p>
+                      <p className="text-white font-medium text-lg">
+                        {btcAmount} BTC
+                      </p>
                     </div>
                     <div>
                       <p className="text-gray-400">You Receive</p>
@@ -822,11 +971,15 @@ export default function Component() {
                 <div className="space-y-2 text-sm">
                   <div className="flex justify-between">
                     <span className="text-gray-400">BTC Address (Test):</span>
-                    <span className="text-orange-400 font-mono text-xs">tb1pmj9...79wnn</span>
+                    <span className="text-orange-400 font-mono text-xs">
+                      tb1pmj9...79wnn
+                    </span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-gray-400">Your ETH Address:</span>
-                    <span className="text-white font-mono text-xs">{userEthAddress.slice(0, 6)}...{userEthAddress.slice(-4)}</span>
+                    <span className="text-white font-mono text-xs">
+                      {userEthAddress.slice(0, 6)}...{userEthAddress.slice(-4)}
+                    </span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-gray-400">Market Maker:</span>
@@ -834,7 +987,9 @@ export default function Component() {
                   </div>
                   <div className="flex justify-between">
                     <span className="text-gray-400">Exchange Rate:</span>
-                    <span className="text-white">{selectedOffer.rate.toFixed(6)} COW/BTC</span>
+                    <span className="text-white">
+                      {selectedOffer.rate.toFixed(6)} COW/BTC
+                    </span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-gray-400">Fee:</span>
@@ -842,7 +997,9 @@ export default function Component() {
                   </div>
                   <div className="flex justify-between">
                     <span className="text-gray-400">Estimated Time:</span>
-                    <span className="text-white">{selectedOffer.estimatedTime}</span>
+                    <span className="text-white">
+                      {selectedOffer.estimatedTime}
+                    </span>
                   </div>
                 </div>
 
@@ -867,5 +1024,5 @@ export default function Component() {
         </Dialog>
       </div>
     </div>
-  )
+  );
 }
