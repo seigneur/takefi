@@ -5,8 +5,14 @@ const router = express.Router();
 const bitcoinService = require('../services/bitcoinService');
 const preimageService = require('../services/preimageService');
 const awsSecretsService = require('../services/awsSecretsService');
+const MMServerService = require('../services/mmServerService');
+const BitcoinMonitoringService = require('../services/bitcoinMonitoringService');
 const logger = require('../utils/logger');
 const { validateRequest } = require('../middleware/validation');
+
+// Initialize services
+const mmServerService = new MMServerService();
+const bitcoinMonitoringService = new BitcoinMonitoringService();
 
 /**
  * Validation rules for creating a new preimage
@@ -17,6 +23,12 @@ const createPreimageValidation = [
     .trim()
     .isLength({ min: 26, max: 62 })
     .withMessage('Invalid Bitcoin address format'),
+  
+  body('userEthWallet')
+    .isString()
+    .trim()
+    .matches(/^0x[a-fA-F0-9]{40}$/)
+    .withMessage('Invalid Ethereum wallet address'),
   
   body('mmPubkey')
     .isString()
@@ -29,10 +41,30 @@ const createPreimageValidation = [
     .isInt({ min: 1, max: parseInt(process.env.MAX_BTC_AMOUNT) || 100000000 })
     .withMessage(`BTC amount must be between 1 and ${process.env.MAX_BTC_AMOUNT || 100000000} satoshis`),
   
+  body('targetToken')
+    .optional()
+    .matches(/^0x[a-fA-F0-9]{40}$/)
+    .withMessage('Invalid target token address'),
+  
   body('timelock')
     .optional()
     .isInt({ min: 1, max: 65535 })
     .withMessage('Timelock must be between 1 and 65535 blocks')
+];
+
+/**
+ * Validation rules for triggering a swap
+ */
+const triggerSwapValidation = [
+  param('swapId').isUUID().withMessage('Invalid swap ID format'),
+  body('btcTxHash')
+    .optional()
+    .isString()
+    .withMessage('Bitcoin transaction hash must be a string'),
+  body('forceExecute')
+    .optional()
+    .isBoolean()
+    .withMessage('forceExecute must be a boolean')
 ];
 
 /**
@@ -42,12 +74,21 @@ const createPreimageValidation = [
  */
 router.post('/create-preimage', createPreimageValidation, validateRequest, async (req, res) => {
   try {
-    const { userBtcAddress, mmPubkey, btcAmount, timelock = parseInt(process.env.DEFAULT_TIMELOCK) || 144 } = req.body;
+    const { 
+      userBtcAddress, 
+      userEthWallet,
+      mmPubkey, 
+      btcAmount, 
+      targetToken = '0x0625aFB445C3B6B7B929342a04A22599fd5dBB59', // Default to COW on Sepolia (native token, has liquidity)
+      timelock = parseInt(process.env.DEFAULT_TIMELOCK) || 144 
+    } = req.body;
 
     logger.info('Creating new preimage for swap', {
       userBtcAddress,
+      userEthWallet,
       mmPubkey: mmPubkey.substring(0, 10) + '...',
       btcAmount,
+      targetToken,
       timelock
     });
 
@@ -77,7 +118,7 @@ router.post('/create-preimage', createPreimageValidation, validateRequest, async
 
     // Create HTLC script
     const htlcResult = bitcoinService.createHTLCScript({
-      hash: preimageData.hash,
+      hash: preimageData.hashBuffer, // Use Buffer instead of hex string
       mmPubkey: Buffer.from(mmPubkey, 'hex'),
       userPubkey: addressValidation.pubkey, // Extract from address if possible
       timelock
@@ -88,19 +129,27 @@ router.post('/create-preimage', createPreimageValidation, validateRequest, async
       swapId,
       preimage: preimageData.preimage,
       hash: preimageData.hash,
-      userAddress: userBtcAddress,
+      userBtcAddress: userBtcAddress,
+      userEthWallet: userEthWallet,
       mmPubkey,
       btcAmount,
+      targetToken,
       timelock,
       htlcScript: htlcResult.script.toString('hex'),
       htlcAddress: htlcResult.address,
       createdAt: new Date().toISOString(),
       expiresAt: new Date(Date.now() + (timelock * 10 * 60 * 1000)).toISOString(), // Assuming 10 min blocks
-      status: 'active'
+      status: 'pending', // Changed from 'active' to 'pending'
+      btcTxHash: null,
+      cowOrderUid: null,
+      cowOrderStatus: null
     };
 
     // Store in AWS Secrets Manager
     await awsSecretsService.storeSwapSecret(swapId, swapMetadata);
+
+    // Auto-start Bitcoin payment monitoring
+    bitcoinMonitoringService.autoStartMonitoring(swapMetadata);
 
     // Return response without preimage
     const response = {
@@ -111,11 +160,16 @@ router.post('/create-preimage', createPreimageValidation, validateRequest, async
         htlcScript: htlcResult.script.toString('hex'),
         htlcAddress: htlcResult.address,
         expiresAt: swapMetadata.expiresAt,
-        timelock
+        timelock,
+        monitoringStarted: true
       }
     };
 
-    logger.info('Successfully created swap', { swapId, htlcAddress: htlcResult.address });
+    logger.info('Successfully created swap and started monitoring', { 
+      swapId, 
+      htlcAddress: htlcResult.address,
+      monitoringActive: true 
+    });
     res.status(201).json(response);
 
   } catch (error) {
@@ -156,15 +210,21 @@ router.get('/swap/:swapId',
         data: {
           swapId: swapData.swapId,
           hash: swapData.hash,
-          userAddress: swapData.userAddress,
+          userBtcAddress: swapData.userBtcAddress,
+          userEthWallet: swapData.userEthWallet,
           mmPubkey: swapData.mmPubkey,
           btcAmount: swapData.btcAmount,
+          targetToken: swapData.targetToken,
           timelock: swapData.timelock,
           htlcScript: swapData.htlcScript,
           htlcAddress: swapData.htlcAddress,
           createdAt: swapData.createdAt,
           expiresAt: swapData.expiresAt,
-          status: swapData.status
+          status: swapData.status,
+          btcTxHash: swapData.btcTxHash,
+          cowOrderUid: swapData.cowOrderUid,
+          cowOrderStatus: swapData.cowOrderStatus,
+          monitoringStatus: bitcoinMonitoringService.getMonitoringStatus(swapData.swapId)
         }
       };
 
@@ -259,6 +319,192 @@ router.post('/reveal-preimage/:swapId',
     }
   }
 );
+
+/**
+ * @route POST /api/oracle/trigger-swap/:swapId
+ * @desc Trigger token swap execution via MM Server when BTC is received
+ * @access Public (will be called by Bitcoin monitoring system)
+ */
+router.post('/trigger-swap/:swapId', 
+  triggerSwapValidation, 
+  validateRequest,
+  async (req, res) => {
+    try {
+      const { swapId } = req.params;
+      const { btcTxHash, forceExecute = false } = req.body;
+
+      logger.info('Swap trigger requested', { swapId, btcTxHash, forceExecute });
+
+      // Get swap data from AWS
+      const swapData = await awsSecretsService.getSwapSecret(swapId);
+      
+      if (!swapData) {
+        return res.status(404).json({
+          success: false,
+          error: 'Swap not found'
+        });
+      }
+
+      // Check if swap is in correct state
+      if (swapData.status !== 'pending' && !forceExecute) {
+        return res.status(400).json({
+          success: false,
+          error: `Swap is not in pending state. Current status: ${swapData.status}`
+        });
+      }
+
+      // Check if swap has expired
+      if (new Date() > new Date(swapData.expiresAt)) {
+        await awsSecretsService.updateSwapStatus(swapId, 'expired');
+        
+        return res.status(400).json({
+          success: false,
+          error: 'Swap has expired'
+        });
+      }
+
+      // Update status to indicate BTC received
+      await awsSecretsService.updateSwapStatus(swapId, 'btc_received', {
+        btcTxHash: btcTxHash,
+        btcReceivedAt: new Date().toISOString()
+      });
+
+      logger.info('BTC payment confirmed, initiating token swap', { swapId, btcTxHash });
+
+      try {
+        // Step 1: Get quote from MM Server
+        logger.info('Getting quote from MM Server for swap', { swapId });
+        
+        // For Sepolia testnet testing: use a fixed WETH amount that has proven liquidity
+        // CoW Protocol requires minimum trade sizes (~0.1 ETH) for liquidity routing
+        const testnetWethAmount = "100000000000000000"; // 0.1 ETH - proven to work with CoW Protocol
+        
+        logger.info('Using fixed testnet amount for CoW Protocol compatibility', {
+          originalBtcAmount: swapData.btcAmount,
+          wethAmountUsed: testnetWethAmount,
+          note: 'Fixed amount ensures liquidity availability on testnet'
+        });
+        
+        const quoteParams = {
+          sellToken: '0xfFf9976782d46CC05630D1f6eBAb18b2324d6B14', // WETH on Sepolia 
+          buyToken: swapData.targetToken,
+          sellAmount: testnetWethAmount,
+          userWallet: swapData.userEthWallet
+        };
+
+        const quote = await mmServerService.getQuote(quoteParams);
+        logger.info('Quote received from MM Server', {
+          swapId,
+          sellAmount: quote.sellAmount,
+          buyAmount: quote.buyAmount,
+          feeAmount: quote.feeAmount
+        });
+
+        // Step 2: Execute trade via MM Server
+        logger.info('Executing trade via MM Server', { swapId });
+        
+        const tradeParams = {
+          sellToken: '0xfFf9976782d46CC05630D1f6eBAb18b2324d6B14',
+          buyToken: swapData.targetToken,
+          sellAmount: testnetWethAmount,
+          userWallet: swapData.userEthWallet,
+          slippagePercent: 0.5,
+          validitySeconds: 1800 // 30 minutes
+        };
+
+        const tradeResult = await mmServerService.executeTrade(tradeParams);
+        logger.info('Trade executed successfully', {
+          swapId,
+          orderUid: tradeResult.orderUid,
+          estimatedExecutionTime: tradeResult.estimatedExecutionTime
+        });
+
+        // Step 3: Update swap with CoW order details
+        await awsSecretsService.updateSwapStatus(swapId, 'tokens_swapped', {
+          btcTxHash: btcTxHash,
+          btcReceivedAt: new Date().toISOString(),
+          cowOrderUid: tradeResult.orderUid,
+          cowOrderStatus: 'pending',
+          tokensSwappedAt: new Date().toISOString(),
+          quote: quote,
+          tradeResult: tradeResult
+        });
+
+        const response = {
+          success: true,
+          data: {
+            swapId,
+            status: 'tokens_swapped',
+            btcTxHash,
+            cowOrderUid: tradeResult.orderUid,
+            quote,
+            estimatedExecutionTime: tradeResult.estimatedExecutionTime,
+            message: 'Swap triggered successfully - tokens are being swapped via CoW Protocol'
+          }
+        };
+
+        logger.info('Swap triggered successfully', { swapId, orderUid: tradeResult.orderUid });
+        res.json(response);
+
+      } catch (mmError) {
+        logger.error('Failed to execute swap via MM Server:', mmError);
+        
+        // Update status to indicate MM server failure
+        await awsSecretsService.updateSwapStatus(swapId, 'mm_failed', {
+          btcTxHash: btcTxHash,
+          btcReceivedAt: new Date().toISOString(),
+          error: mmError.message,
+          failedAt: new Date().toISOString()
+        });
+
+        return res.status(500).json({
+          success: false,
+          error: 'Failed to execute token swap',
+          details: mmError.message
+        });
+      }
+
+    } catch (error) {
+      logger.error('Error triggering swap:', error);
+      res.status(500).json({
+        success: false,
+        error: 'Internal server error'
+      });
+    }
+  }
+);
+
+/**
+ * @route GET /api/oracle/mm-server-health
+ * @desc Check MM Server connectivity and health
+ * @access Public
+ */
+router.get('/mm-server-health', async (req, res) => {
+  try {
+    logger.info('Checking MM Server health');
+    
+    const healthResult = await mmServerService.checkHealth();
+    const isConnected = await mmServerService.validateConnection();
+    
+    res.json({
+      success: true,
+      data: {
+        mmServerConnected: isConnected,
+        mmServerHealth: healthResult,
+        mmServerUrl: process.env.MM_SERVER_URL || 'http://localhost:3000',
+        timestamp: new Date().toISOString()
+      }
+    });
+    
+  } catch (error) {
+    logger.error('MM Server health check failed:', error);
+    res.status(500).json({
+      success: false,
+      error: 'MM Server health check failed',
+      details: error.message
+    });
+  }
+});
 
 
 module.exports = router;
