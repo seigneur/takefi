@@ -11,8 +11,8 @@ interface ChainlinkPriceTickerProps {
 }
 
 export function ChainlinkPriceTicker({ onPriceUpdate }: ChainlinkPriceTickerProps) {
-  const [pricesData, setPricesData] = useState<Record<string, PriceData | null>>({ BTC: null, XTSLA: null })
-  const [previousPrices, setPreviousPrices] = useState<Record<string, number>>({ BTC: 0, XTSLA: 0 })
+  const [pricesData, setPricesData] = useState<Record<string, PriceData | null>>({ BTC: null, COW: null })
+  const [previousPrices, setPreviousPrices] = useState<Record<string, number>>({ BTC: 0, COW: 0 })
   const [loading, setLoading] = useState(true)
   const [networkStatus, setNetworkStatus] = useState({ blockNumber: 0, gasPrice: "0" })
 
@@ -30,7 +30,7 @@ export function ChainlinkPriceTicker({ onPriceUpdate }: ChainlinkPriceTickerProp
       // Set previous prices for change calculation
       const currentPrices = {
         BTC: newPricesData.BTC?.price || 0,
-        XTSLA: newPricesData.XTSLA?.price || 0,
+        COW: newPricesData.COW?.price || 0,
       }
       setPreviousPrices(currentPrices)
 
@@ -44,7 +44,7 @@ export function ChainlinkPriceTicker({ onPriceUpdate }: ChainlinkPriceTickerProp
     const unsubscribe = chainlinkService.subscribeToRealTimeUpdates((newPricesData) => {
       setPreviousPrices({
         BTC: pricesData.BTC?.price || 0,
-        XTSLA: pricesData.XTSLA?.price || 0,
+        COW: pricesData.COW?.price || 0,
       })
       setPricesData(newPricesData)
       onPriceUpdate?.(newPricesData)
@@ -162,7 +162,7 @@ export function ChainlinkPriceTicker({ onPriceUpdate }: ChainlinkPriceTickerProp
       <div className="flex items-center justify-between">
         <div className="flex items-center space-x-6">
           <PriceItem symbol="BTC" priceData={pricesData.BTC} icon={Bitcoin} color="text-orange-500" />
-          <PriceItem symbol="XTSLA" priceData={pricesData.XTSLA} icon={TrendingUp} color="text-blue-400" />
+          <PriceItem symbol="COW" priceData={pricesData.COW} icon={TrendingUp} color="text-blue-400" />
         </div>
 
         <div className="flex items-center space-x-2 text-xs text-gray-400">
