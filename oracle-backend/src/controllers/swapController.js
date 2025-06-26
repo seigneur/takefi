@@ -7,6 +7,7 @@ const preimageService = require('../services/preimageService');
 const awsSecretsService = require('../services/awsSecretsService');
 const MMServerService = require('../services/mmServerService');
 const BitcoinMonitoringService = require('../services/bitcoinMonitoringService');
+const ChainlinkFunctionsService = require('../services/chainlinkFunctionsService');
 const logger = require('../utils/logger');
 const { validateRequest } = require('../middleware/validation');
 
