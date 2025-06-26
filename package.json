@@ -1,0 +1,47 @@
+{
+  "name": "btcfi-platform",
+  "version": "1.0.0",
+  "description": "BTCFi Platform - Bitcoin to RWA Token Swapping",
+  "private": true,
+  "scripts": {
+    "dev": "concurrently -n \"oracle,mm,frontend\" -c \"blue,green,yellow\" \"npm run dev:oracle\" \"npm run dev:mm\" \"npm run dev:frontend\"",
+    "dev:oracle": "cd oracle-backend && PORT=3001 npm run dev",
+    "dev:mm": "cd cow-mm-server && PORT=3000 npm run dev",
+    "dev:frontend": "cd frontend && PORT=3002 npm run dev",
+    "build": "npm run build:mm && npm run build:frontend",
+    "build:mm": "cd cow-mm-server && npm run build",
+    "build:frontend": "cd frontend && npm run build",
+    "start": "npm run start:production",
+    "start:production": "pm2 start ecosystem.config.js --env production",
+    "start:development": "pm2 start ecosystem.config.js --env development",
+    "stop": "pm2 delete all",
+    "restart": "pm2 restart all",
+    "logs": "pm2 logs",
+    "health": "npm run health:oracle && npm run health:mm",
+    "health:oracle": "curl -f http://localhost:3001/health || echo 'Oracle Backend not responding'",
+    "health:mm": "curl -f http://localhost:3000/health || echo 'MM Server not responding'",
+    "deploy:frontend": "cd frontend && npm run build && echo 'Frontend built - ready for Vercel/Netlify deployment'",
+    "deploy:backends": "npm run build:mm && pm2 start ecosystem.config.js --env production",
+    "install:all": "npm install && cd oracle-backend && npm install && cd ../cow-mm-server && npm install && cd ../frontend && npm install",
+    "clean": "npm run stop && rm -rf frontend/.next && rm -rf cow-mm-server/dist",
+    "status": "pm2 status",
+    "check": "./deployment/scripts/check-status.sh"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2",
+    "pm2": "^5.3.0"
+  },
+  "engines": {
+    "node": ">=16.0.0",
+    "npm": ">=8.0.0"
+  },
+  "keywords": [
+    "bitcoin",
+    "defi",
+    "cow-protocol",
+    "rwa",
+    "blockchain"
+  ],
+  "author": "TakeFi Team",
+  "license": "MIT"
+}
