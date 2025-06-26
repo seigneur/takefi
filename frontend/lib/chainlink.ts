@@ -1,4 +1,5 @@
 import { ethers } from "ethers";
+import { mmAPI, TOKEN_ADDRESSES } from "./api";
 
 // Chainlink Price Feed ABI (minimal interface)
 const PRICE_FEED_ABI = [
@@ -110,7 +111,7 @@ export class ChainlinkPriceService {
           contract.description().catch(() => "Unknown Feed"),
         ]);
       } catch (err: any) {
-        /* When the feed reverts (e.g. “missing revert data”) retry with legacy getters.
+        /* When the feed reverts (e.g. "missing revert data") retry with legacy getters.
          Some older equity feeds expose latestAnswer / latestTimestamp instead. */
         if (err.code === "CALL_EXCEPTION") {
           const [legacyAnswer, legacyTimestamp, legacyDecimals] =
@@ -122,11 +123,11 @@ export class ChainlinkPriceService {
 
           if (legacyAnswer && legacyTimestamp) {
             roundData = [
-              0n,
+              BigInt(0),
               BigInt(legacyAnswer),
               BigInt(legacyTimestamp),
               BigInt(legacyTimestamp),
-              0n,
+              BigInt(0),
             ];
             decimals = Number(legacyDecimals ?? 8);
             description = await contract
@@ -149,15 +150,50 @@ export class ChainlinkPriceService {
       return {
         price,
         timestamp: Number(updatedAt) * 1000, // Convert to milliseconds
-        roundId: roundId.toString(),
+        roundId: String(roundId),
         decimals: Number(decimals),
-        description,
+        description: String(description ?? ""),
       };
     } catch (error) {
       console.error(
         `Error reading from Chainlink contract ${contractAddress}:`,
         error
       );
+      return null;
+    }
+  }
+
+  async getCowUsdPriceViaQuote(): Promise<PriceData | null> {
+    try {
+      // Get ETH/USD price from Chainlink
+      const ethPriceData = await this.getPriceFromContract(PRICE_FEEDS.ETH_USD);
+      if (!ethPriceData) throw new Error("ETH/USD price unavailable");
+      // Use 1 WETH (1e18 wei)
+      const sellAmount = (1e18).toString();
+      // Use a default testnet wallet (can be any valid address)
+      const userWallet =
+        process.env.NEXT_PUBLIC_TEST_USER_WALLET ||
+        "0x742d35Cc6aB09028b5bC08dB6c2b968e1d4fE03a";
+      // Get quote for 1 WETH -> COW
+      const quote = await mmAPI.getQuote({
+        sellToken: TOKEN_ADDRESSES.WETH,
+        buyToken: TOKEN_ADDRESSES.COW,
+        sellAmount,
+        userWallet,
+      });
+      const cowAmount = parseFloat(quote.buyAmount) / 1e18;
+      const ethUsd = ethPriceData.price;
+      // 1 COW = (1 ETH in USD) / (COW per ETH)
+      const cowUsd = ethUsd / cowAmount;
+      return {
+        price: cowUsd,
+        timestamp: Date.now(),
+        roundId: quote.expiresAt || "cow-quote",
+        decimals: 18,
+        description: "COW / USD (via MM Quote)",
+      };
+    } catch (error) {
+      console.error("Error fetching COW price via quote:", error);
       return null;
     }
   }
@@ -181,15 +217,7 @@ export class ChainlinkPriceService {
           priceData = await this.getPriceFromContract(PRICE_FEEDS.ETH_USD);
           break;
         case "COW":
-          // COW doesn't have a dedicated Chainlink feed, so we'll provide a mock price
-          // In production, you'd integrate with a DEX aggregator or the CoW Protocol API
-          priceData = {
-            price: 0.25, // Mock price for COW token (around $0.25)
-            timestamp: Date.now(),
-            roundId: "mock-round",
-            decimals: 8,
-            description: "COW / USD (CoW Protocol Token - Mock Price)",
-          };
+          priceData = await this.getCowUsdPriceViaQuote();
           break;
         default:
           console.warn(`Price feed not available for ${symbol}`);
