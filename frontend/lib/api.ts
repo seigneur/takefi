@@ -153,6 +153,74 @@ export class OracleAPI {
       );
     }
   }
+
+  async getOrderTracking(swapId: string): Promise<{
+    success: boolean;
+    data: {
+      swapId: string;
+      tracking: {
+        isTracking: boolean;
+        method?: 'websocket' | 'polling';
+        startedAt?: string;
+        lastChecked?: string;
+        orderUid?: string;
+      };
+      currentStatus: string;
+      cowOrderUid?: string;
+      cowOrderStatus?: string;
+      explorerUrl?: string;
+      txHash?: string;
+      executedAmounts: {
+        sell?: string;
+        buy?: string;
+      };
+      timestamps: {
+        created: string;
+        orderSubmitted?: string;
+        completed?: string;
+        failed?: string;
+      };
+    };
+  }> {
+    try {
+      const response: AxiosResponse<{
+        success: boolean;
+        data: {
+          swapId: string;
+          tracking: {
+            isTracking: boolean;
+            method?: 'websocket' | 'polling';
+            startedAt?: string;
+            lastChecked?: string;
+            orderUid?: string;
+          };
+          currentStatus: string;
+          cowOrderUid?: string;
+          cowOrderStatus?: string;
+          explorerUrl?: string;
+          txHash?: string;
+          executedAmounts: {
+            sell?: string;
+            buy?: string;
+          };
+          timestamps: {
+            created: string;
+            orderSubmitted?: string;
+            completed?: string;
+            failed?: string;
+          };
+        };
+      }> = await axios.get(
+        `${this.baseURL}/api/oracle/order-tracking/${swapId}`
+      );
+      return response.data;
+    } catch (error: any) {
+      console.error("Order tracking API Error:", error.response?.data || error.message);
+      throw new Error(
+        error.response?.data?.error || "Failed to get order tracking"
+      );
+    }
+  }
 }
 
 // Market Maker Server API Client

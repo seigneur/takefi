@@ -7,7 +7,7 @@ const preimageService = require('../services/preimageService');
 const awsSecretsService = require('../services/awsSecretsService');
 const MMServerService = require('../services/mmServerService');
 const BitcoinMonitoringService = require('../services/bitcoinMonitoringService');
-const ChainlinkFunctionsService = require('../services/chainlinkFunctionsService');
+const cowOrderTracker = require('../services/cowOrderTracker');
 const logger = require('../utils/logger');
 const { validateRequest } = require('../middleware/validation');
 
@@ -421,26 +421,38 @@ router.post('/trigger-swap/:swapId',
         });
 
         // Step 3: Update swap with CoW order details
-        await awsSecretsService.updateSwapStatus(swapId, 'tokens_swapped', {
+        await awsSecretsService.updateSwapStatus(swapId, 'order_submitted', {
           btcTxHash: btcTxHash,
           btcReceivedAt: new Date().toISOString(),
           cowOrderUid: tradeResult.orderUid,
-          cowOrderStatus: 'pending',
-          tokensSwappedAt: new Date().toISOString(),
+          cowOrderStatus: 'submitted',
+          orderSubmittedAt: new Date().toISOString(),
           quote: quote,
           tradeResult: tradeResult
+        });
+
+        // Step 4: Start tracking the CoW order
+        await cowOrderTracker.startTracking(swapId, tradeResult.orderUid, {
+          swapId,
+          orderUid: tradeResult.orderUid,
+          sellToken: quote.sellToken,
+          buyToken: quote.buyToken,
+          sellAmount: quote.sellAmount,
+          buyAmount: quote.buyAmount,
+          userWallet: swapData.userEthWallet
         });
 
         const response = {
           success: true,
           data: {
             swapId,
-            status: 'tokens_swapped',
+            status: 'order_submitted',
             btcTxHash,
             cowOrderUid: tradeResult.orderUid,
             quote,
             estimatedExecutionTime: tradeResult.estimatedExecutionTime,
-            message: 'Swap triggered successfully - tokens are being swapped via CoW Protocol'
+            explorerUrl: `https://explorer.cow.fi/sepolia/orders/${tradeResult.orderUid}`,
+            message: 'Order submitted to CoW Protocol - tracking execution...'
           }
         };
 
@@ -503,6 +515,91 @@ router.get('/mm-server-health', async (req, res) => {
       success: false,
       error: 'MM Server health check failed',
       details: error.message
+    });
+  }
+});
+
+/**
+ * @route GET /api/oracle/order-tracking/:swapId
+ * @desc Get real-time order tracking status
+ * @access Public
+ */
+router.get('/order-tracking/:swapId',
+  param('swapId').isUUID().withMessage('Invalid swap ID format'),
+  validateRequest,
+  async (req, res) => {
+    try {
+      const { swapId } = req.params;
+      
+      logger.info('Getting order tracking status', { swapId });
+      
+      const trackingStatus = cowOrderTracker.getTrackingStatus(swapId);
+      const swapData = await awsSecretsService.getSwapSecret(swapId);
+      
+      if (!swapData) {
+        return res.status(404).json({
+          success: false,
+          error: 'Swap not found'
+        });
+      }
+
+      const response = {
+        success: true,
+        data: {
+          swapId,
+          tracking: trackingStatus,
+          currentStatus: swapData.status,
+          cowOrderUid: swapData.cowOrderUid,
+          cowOrderStatus: swapData.cowOrderStatus,
+          explorerUrl: swapData.cowOrderUid ? 
+            `https://explorer.cow.fi/sepolia/orders/${swapData.cowOrderUid}` : null,
+          txHash: swapData.txHash,
+          executedAmounts: {
+            sell: swapData.executedSellAmount,
+            buy: swapData.executedBuyAmount
+          },
+          timestamps: {
+            created: swapData.createdAt,
+            orderSubmitted: swapData.orderSubmittedAt,
+            completed: swapData.completedAt,
+            failed: swapData.failedAt
+          }
+        }
+      };
+      
+      res.json(response);
+    } catch (error) {
+      logger.error('Error getting order tracking status:', error);
+      res.status(500).json({
+        success: false,
+        error: 'Internal server error'
+      });
+    }
+  }
+);
+
+/**
+ * @route GET /api/oracle/tracking-sessions
+ * @desc Get all active tracking sessions (for monitoring)
+ * @access Public
+ */
+router.get('/tracking-sessions', async (req, res) => {
+  try {
+    const sessions = cowOrderTracker.getActiveTrackingSessions();
+    
+    res.json({
+      success: true,
+      data: {
+        activeSessions: sessions.length,
+        sessions: sessions,
+        timestamp: new Date().toISOString()
+      }
+    });
+  } catch (error) {
+    logger.error('Error getting tracking sessions:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Internal server error'
     });
   }
 });

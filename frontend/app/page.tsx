@@ -24,6 +24,7 @@ import {
   Wallet,
   Globe,
   Zap,
+  ExternalLink,
 } from "lucide-react";
 import { ChainlinkPriceTicker } from "@/components/chainlink-price-ticker";
 import BitcoinPaymentChecker from "@/components/bitcoin-payment-checker";
@@ -47,9 +48,9 @@ import {
 const swapSteps = [
   { id: 1, name: "Offer Confirmed", status: "pending", icon: CheckCircle },
   { id: 2, name: "Bitcoin Script Created", status: "pending", icon: Bitcoin },
-  { id: 3, name: "BTC Locked", status: "pending", icon: Wallet },
-  { id: 4, name: "Oracle Processing", status: "pending", icon: Globe },
-  { id: 5, name: "RWA Tokens Received", status: "pending", icon: TrendingUp },
+  { id: 3, name: "BTC Payment Received", status: "pending", icon: Wallet },
+  { id: 4, name: "Order Submitted to CoW", status: "pending", icon: Globe },
+  { id: 5, name: "Tokens Delivered", status: "pending", icon: TrendingUp },
 ];
 
 // Chainlink Price Feed Integration
@@ -119,6 +120,9 @@ export default function Component() {
   const [currentStep, setCurrentStep] = useState(0);
   const [isSwapping, setIsSwapping] = useState(false);
   const [swapCompleted, setSwapCompleted] = useState(false);
+  
+  // Order tracking data
+  const [orderTrackingData, setOrderTrackingData] = useState<any>(null);
 
   // Prices
   const [btcPrice, setBtcPrice] = useState(0);
@@ -242,8 +246,22 @@ export default function Component() {
   // Poll Oracle for swap status updates
   const pollSwapStatus = async (swapId: string) => {
     try {
-      const swapDetails = await oracleAPI.getSwapDetails(swapId);
+      // Get both swap details and order tracking
+      const [swapDetails, orderTracking] = await Promise.all([
+        oracleAPI.getSwapDetails(swapId),
+        oracleAPI.getOrderTracking(swapId).catch(error => {
+          console.warn("Order tracking not available yet:", error.message);
+          return null;
+        })
+      ]);
+
       console.log("Swap status update:", swapDetails.data.status);
+      console.log("Order tracking:", orderTracking?.data);
+
+      // Store order tracking data for UI
+      if (orderTracking) {
+        setOrderTrackingData(orderTracking.data);
+      }
 
       switch (swapDetails.data.status) {
         case "pending":
@@ -251,17 +269,39 @@ export default function Component() {
           updateSwapStep(2, "current");
           setCurrentStep(2);
           break;
+          
         case "btc_received":
           // BTC received, oracle processing
           updateSwapStep(2, "completed");
           updateSwapStep(3, "current");
           setCurrentStep(3);
           break;
-        case "tokens_swapped":
-          // Swap completed successfully
-          updateSwapStep(3, "completed");
-          updateSwapStep(4, "completed");
+          
+        case "order_submitted":
+          // Order has been submitted to CoW Protocol
+          updateSwapStep(2, "completed");
+          updateSwapStep(3, "completed");  
+          updateSwapStep(4, "current");
           setCurrentStep(4);
+          break;
+          
+        case "order_pending":
+          // Order is live on CoW Protocol, waiting for execution
+          updateSwapStep(4, "current");
+          setCurrentStep(4);
+          break;
+          
+        case "order_partial":
+          // Order partially filled
+          updateSwapStep(4, "current");
+          setCurrentStep(4);
+          break;
+          
+        case "completed":
+          // Actually completed - tokens delivered!
+          updateSwapStep(4, "completed");
+          updateSwapStep(5, "completed");
+          setCurrentStep(5);
           setSwapCompleted(true);
           setIsSwapping(false);
           // Clear polling
@@ -270,9 +310,11 @@ export default function Component() {
             delete (window as any).swapPollInterval;
           }
           break;
+          
+        case "order_failed":
         case "mm_failed":
-          console.error("MM Server failed:", swapDetails.data);
-          alert("Swap failed during token exchange. Please contact support.");
+          console.error("Order/MM failed:", swapDetails.data);
+          alert("Order failed to execute. This can happen on testnet due to low liquidity. Please try again or contact support.");
           setIsSwapping(false);
           // Clear polling
           if ((window as any).swapPollInterval) {
@@ -280,6 +322,7 @@ export default function Component() {
             delete (window as any).swapPollInterval;
           }
           break;
+          
         case "expired":
           console.error("Swap expired");
           alert("Swap expired. Please create a new swap.");
@@ -292,7 +335,7 @@ export default function Component() {
           break;
       }
     } catch (error) {
-      console.error("Failed to get swap status:", error);
+      console.error("Failed to get swap/order status:", error);
     }
   };
 
@@ -752,10 +795,36 @@ export default function Component() {
                     <Clock className="h-5 w-5 mr-2 animate-pulse" />
                     Swap in Progress
                   </CardTitle>
-                  <div className="space-y-1">
+                  <div className="space-y-2">
                     <p className="text-gray-400">
                       Swap ID: {realSwapId || "Creating..."}
                     </p>
+                    
+                    {/* Order Tracking Status */}
+                    {orderTrackingData && (
+                      <div className="flex items-center gap-2 text-xs">
+                        <span className="text-gray-400">Tracking:</span>
+                        <Badge variant="outline" className={`${
+                          orderTrackingData.tracking.method === 'websocket' 
+                            ? 'bg-green-500/20 text-green-400 border-green-500/30' 
+                            : 'bg-blue-500/20 text-blue-400 border-blue-500/30'
+                        }`}>
+                          {orderTrackingData.tracking.method === 'websocket' ? '🔴 Live' : '🔄 Polling'}
+                        </Badge>
+                        {orderTrackingData.explorerUrl && (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => window.open(orderTrackingData.explorerUrl, '_blank')}
+                            className="h-5 px-2 text-xs"
+                          >
+                            <ExternalLink className="h-3 w-3 mr-1" />
+                            CoW Explorer
+                          </Button>
+                        )}
+                      </div>
+                    )}
+                    
                     {htlcAddress && (
                       <div className="bg-orange-500/10 border border-orange-500/20 rounded-lg p-3">
                         <p className="text-orange-400 font-semibold text-sm">
@@ -882,57 +951,110 @@ export default function Component() {
                   </motion.div>
 
                   <h2 className="text-2xl font-bold text-white mb-2">
-                    Swap Completed!
+                    Swap Completed Successfully! 🎉
                   </h2>
                   <p className="text-gray-300 mb-6">
-                    Your Bitcoin has been successfully swapped for RWA tokens.
+                    Your Bitcoin has been swapped and tokens have been delivered to your wallet.
                   </p>
 
+                  {/* Trade Details */}
                   <div className="bg-white/5 rounded-lg p-4 mb-6">
                     <div className="grid grid-cols-2 gap-4 text-sm">
                       <div>
                         <p className="text-gray-400">Swapped</p>
-                        <p className="text-white font-medium">
-                          {btcAmount} BTC
-                        </p>
+                        <p className="text-white font-medium">{btcAmount} BTC</p>
                       </div>
                       <div>
                         <p className="text-gray-400">Received</p>
                         <p className="text-green-400 font-medium">
-                          {selectedOffer
-                            ? calculateOutput(btcAmount, selectedOffer.rate)
-                            : "0"}{" "}
-                          COW
+                          {orderTrackingData?.executedAmounts?.buy ? 
+                            `${(parseFloat(orderTrackingData.executedAmounts.buy) / 1e18).toFixed(4)} COW` :
+                            `${selectedOffer ? calculateOutput(btcAmount, selectedOffer.rate) : "0"} COW`
+                          }
                         </p>
                       </div>
                       <div>
-                        <p className="text-gray-400">Swap ID</p>
+                        <p className="text-gray-400">Transaction</p>
                         <p className="text-white font-mono text-xs">
-                          {realSwapId}
+                          {orderTrackingData?.txHash ? 
+                            `${orderTrackingData.txHash.slice(0, 10)}...${orderTrackingData.txHash.slice(-6)}` : 
+                            'Processing'
+                          }
                         </p>
                       </div>
                       <div>
-                        <p className="text-gray-400">Status</p>
-                        <Badge className="bg-green-500/20 text-green-400 border-green-500/30">
-                          Completed
+                        <p className="text-gray-400">Network</p>
+                        <Badge className="bg-blue-500/20 text-blue-400 border-blue-500/30">
+                          Sepolia
                         </Badge>
                       </div>
                     </div>
                   </div>
 
-                  <div className="flex gap-3">
-                    <Button
-                      onClick={() => window.location.reload()}
-                      className="flex-1 bg-gradient-to-r from-orange-500 to-purple-600 hover:from-orange-600 hover:to-purple-700"
-                    >
-                      New Swap
-                    </Button>
-                    <Button
-                      variant="outline"
-                      className="flex-1 bg-white/10 border-white/20 text-white hover:bg-white/20"
-                    >
-                      View Portfolio
-                    </Button>
+                  {/* Action Buttons */}
+                  <div className="space-y-3">
+                    {/* CoW Explorer Link */}
+                    {orderTrackingData?.explorerUrl && (
+                      <Button
+                        onClick={() => window.open(orderTrackingData.explorerUrl, '_blank')}
+                        className="w-full bg-gradient-to-r from-purple-500 to-blue-600 hover:from-purple-600 hover:to-blue-700"
+                      >
+                        <ExternalLink className="h-4 w-4 mr-2" />
+                        View on CoW Protocol Explorer
+                      </Button>
+                    )}
+                    
+                    {/* Transaction Hash Link */}
+                    {orderTrackingData?.txHash && (
+                      <Button
+                        onClick={() => window.open(`https://sepolia.etherscan.io/tx/${orderTrackingData.txHash}`, '_blank')}
+                        variant="outline"
+                        className="w-full bg-white/10 border-white/20 text-white hover:bg-white/20"
+                      >
+                        <ExternalLink className="h-4 w-4 mr-2" />
+                        View Transaction on Etherscan
+                      </Button>
+                    )}
+
+                    {/* Token Import Helper */}
+                    <div className="bg-blue-500/10 border border-blue-500/20 rounded-lg p-4 text-left">
+                      <p className="text-blue-400 font-semibold mb-2">📱 Add Token to Wallet</p>
+                      <p className="text-sm text-gray-300 mb-2">
+                        If tokens don't appear automatically, import this contract:
+                      </p>
+                      <div className="bg-black/30 rounded p-2 flex items-center justify-between">
+                        <code className="text-xs text-green-400 font-mono">
+                          0x0625aFB445C3B6B7B929342a04A22599fd5dBB59
+                        </code>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => navigator.clipboard.writeText('0x0625aFB445C3B6B7B929342a04A22599fd5dBB59')}
+                          className="h-6 px-2"
+                        >
+                          Copy
+                        </Button>
+                      </div>
+                      <p className="text-xs text-gray-400 mt-2">
+                        Token Symbol: COW • Network: Sepolia Testnet
+                      </p>
+                    </div>
+
+                    {/* Navigation Buttons */}
+                    <div className="flex gap-3 pt-4">
+                      <Button
+                        onClick={() => window.location.reload()}
+                        className="flex-1 bg-gradient-to-r from-orange-500 to-purple-600 hover:from-orange-600 hover:to-purple-700"
+                      >
+                        New Swap
+                      </Button>
+                      <Button
+                        variant="outline"
+                        className="flex-1 bg-white/10 border-white/20 text-white hover:bg-white/20"
+                      >
+                        View Portfolio
+                      </Button>
+                    </div>
                   </div>
                 </CardContent>
               </Card>
