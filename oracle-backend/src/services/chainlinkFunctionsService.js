@@ -17,7 +17,8 @@ const { FunctionsConsumerABI } = require("../abis/FunctionsConsumerABI");
 class ChainlinkFunctionsService {
     constructor() {
         this.consumerContractAddress = process.env.CONSUMER_CONTRACT_ADDRESS;
-        this.privateKey = process.env.PRIVATE_KEY;
+        this.provider = new ethers.providers.JsonRpcProvider(process.env.NETWORK_RPC_URL || "https://eth-sepolia.public.blastapi.io");
+        this.signer = new ethers.Wallet(process.env.PRIVATE_KEY || '0x', this.provider);
         this.gatewayUrls = [
             "https://01.functions-gateway.testnet.chain.link/",
             "https://02.functions-gateway.testnet.chain.link/",
@@ -25,11 +26,13 @@ class ChainlinkFunctionsService {
         this.linkTokenAddress = process.env.LINK_TOKEN_ADDRESS;
         this.functionsRouterAddress = process.env.FUNCTIONS_ROUTER_ADDRESS;
         this.donId = process.env.DON_ID || "fun-ethereum-sepolia-1";
-        this.networkRpcUrl = process.env.NETWORK_RPC_URL || "https://eth-sepolia.public.blastapi.io";
         this.subscriptionId = process.env.SUBSCRIPTION_ID;
     }
 
-    async createRequest(awsSecretARN) {
+    /**
+     * Creates a Chainlink Functions request to retrieve preimage and reads the result.
+     */
+    async createRequestAndReadResult(awsSecretARN) {
         try {
             if (!process.env.AWS_ACCESS_KEY_ID || !process.env.AWS_SECRET_ACCESS_KEY) {
                 throw new Error("AWS credentials are not set in environment variables.");
@@ -37,16 +40,13 @@ class ChainlinkFunctionsService {
 
             if (!awsSecretARN) {
                 throw new Error("AWS Secret ARN is required.");
-            }
+            }            
 
-            const provider = new ethers.JsonRpcProvider(this.networkRpcUrl);
-            const signer = new ethers.Wallet(this.privateKey, provider);
-
-            const subManager = new SubscriptionManager({ signer, 
+            const subManager = new SubscriptionManager({ signer: this.signer, 
                 linkTokenAddress: this.linkTokenAddress, functionsRouterAddress: this.functionsRouterAddress });
             await subManager.initialize();            
 
-            const secretsManager = new SecretsManager({ signer, 
+            const secretsManager = new SecretsManager({ signer: this.signer, 
                 functionsRouterAddress: this.functionsRouterAddress, donId: this.donId });
             await secretsManager.initialize();
 
@@ -57,8 +57,8 @@ class ChainlinkFunctionsService {
 
             const callbackGasLimit = 100000;
 
-            const feeData = await provider.getFeeData();
-            const gasPriceWei = feeData.gasPrice;
+            const { gasPrice } = await this.provider.getFeeData();
+            const gasPriceWei = BigInt(Math.ceil(ethers.utils.formatUnits(gasPrice, "wei").toString()))
             const estimatedCostJuels = await subManager.estimateFunctionsRequestCost({
                 donId: this.donId,
                 subscriptionId: this.subscriptionId,
@@ -66,8 +66,8 @@ class ChainlinkFunctionsService {
                 gasPriceWei,
             });
 
-            const estimatedCostLink = ethers.formatUnits(estimatedCostJuels, 18);
-            const subBalanceLink = ethers.formatUnits(subInfo.balance, 18);
+            const estimatedCostLink = ethers.utils.formatUnits(estimatedCostJuels, 18);
+            const subBalanceLink = ethers.utils.formatUnits(subInfo.balance, 18);
             if (subInfo.balance <= estimatedCostJuels) {
                 throw new Error(
                     `Subscription ${this.subscriptionId} does not have sufficient funds. The estimated cost is ${estimatedCostLink} LINK, but the subscription only has ${subBalanceLink} LINK.`
@@ -75,7 +75,7 @@ class ChainlinkFunctionsService {
             }
 
             const requestConfig = {
-                source: fs.readFileSync(path.join(__dirname, "../../chainlink-functions/preimage-retrieval-aws.js")).toString(),
+                source: fs.readFileSync(path.join(__dirname, "../../../chainlink-functions/preimage-retrieval-aws.js")).toString(),
                 codeLocation: Location.Inline,
                 secrets: { AWS_ACCESS_KEY_ID: process.env.AWS_ACCESS_KEY_ID ?? "", 
                     AWS_SECRET_ACCESS_KEY: process.env.AWS_SECRET_ACCESS_KEY ?? "" },
@@ -97,19 +97,19 @@ class ChainlinkFunctionsService {
                 version,
             });
 
-            const requestGasLimit = 1000000;
+            const requestGasLimit = 1500000;
             const overrides = {
                 gasLimit: requestGasLimit,
             };
             const responseListener = new ResponseListener({
-                provider: provider,
+                provider: this.provider,
                 functionsRouterAddress: this.functionsRouterAddress,
             });
 
             const consumerContract = new ethers.Contract(
                 this.consumerContractAddress,
                 FunctionsConsumerABI,
-                signer
+                this.signer
             );
 
             const requestTx = await consumerContract.sendRequest(
@@ -122,8 +122,13 @@ class ChainlinkFunctionsService {
                 callbackGasLimit,
                 overrides
             );
+            logger.info(`Sending request to Chainlink Functions with transaction hash: ${requestTx.hash}`);
             const requestTxReceipt = await requestTx.wait(1);
-            logger.info(`Request transaction hash: ${requestTxReceipt.hash}`);
+            logger.info(`Confirmed transaction hash ${requestTxReceipt.transactionHash}`);
+
+            logger.info(
+                `Functions request has been initiated in transaction ${requestTx.hash} with request ID ${requestTxReceipt.events[2].args.id}. Note the request ID may change if a re-org occurs, but the transaction hash will remain constant.\nWaiting for fulfillment from the Decentralized Oracle Network...\n`
+            );
 
             const NUM_CONFIRMATIONS = 2;
             const { requestId, totalCostInJuels, responseBytesHexstring, errorString, fulfillmentCode } =
@@ -135,7 +140,7 @@ class ChainlinkFunctionsService {
                     } else if (responseBytesHexstring == "0x") {
                         throw new Error(`Request ${requestId} fulfilled with empty response data`);
                     } else {
-                        const linkCost = ethers.formatUnits(totalCostInJuels, 18);
+                        const linkCost = ethers.utils.formatUnits(totalCostInJuels, 18);
                         logger.info(`Total request cost: ${linkCost} LINK`);
                     }
                     break;
@@ -156,14 +161,13 @@ class ChainlinkFunctionsService {
 
             let latestResponse = await consumerContract.s_lastResponse();
             if (latestResponse.length > 0 && latestResponse !== "0x") {
-                const decodedResult = decodeResult(latestResponse, requestConfig.expectedReturnType).toString();
+                const decodedResult = decodeResult(latestResponse, requestConfig.expectedReturnType);
                 return decodedResult;
             } else if (latestResponse == "0x") {
                 return latestResponse;
             }
         } catch (error) {
             logger.error('Error creating Chainlink Functions request:', error);
-            throw error;
         }
     }
 }

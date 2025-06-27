@@ -30,7 +30,7 @@ try {
   const data = await response.json();
   const secretObject = JSON.parse(data.SecretString);
   
-  return Functions.encodeString(JSON.stringify(secretObject.preimage));
+  return Functions.encodeString(secretObject.preimage);
 } catch (error) {
   throw error;
 }
