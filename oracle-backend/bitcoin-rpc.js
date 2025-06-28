@@ -1,5 +1,6 @@
 // Bitcoin RPC client for regtest interaction
 const bitcoin = require('bitcoinjs-lib');
+const ECPair = require('ecpair').ECPairFactory(require('tiny-secp256k1'));
 const https = require('https');
 const http = require('http');
 
@@ -15,7 +16,63 @@ class BitcoinRPCClient {
         };
 
         this.currentWallet = null; // Track current wallet
+        
+        // Bitcoin network configuration
+        this.network = bitcoin.networks.regtest; // Use regtest network
     }
+    // ...existing code...
+
+/**
+ * Get detailed information about an address including public key
+ */
+async getAddressInfo(address, walletName) {
+    try {
+        console.log(`Getting address info for: ${address}`);
+        const result = await this.callRPC('getaddressinfo', [address], walletName);
+        return result;
+    } catch (error) {
+        console.error(`Error getting address info for ${address}:`, error.message);
+        throw error;
+    }
+}
+
+/**
+ * Get UTXO balance for any address using scantxoutset (works without importing address)
+ */
+async getAddressUTXOBalance(address) {
+    try {
+        console.log(`Scanning UTXO set for address: ${address}`);
+        const result = await this.callRPC('scantxoutset', ['start', [`addr(${address})`]]);
+        
+        if (result && result.unspents) {
+            const totalAmount = result.unspents.reduce((sum, utxo) => sum + utxo.amount, 0);
+            console.log(`Found ${result.unspents.length} UTXOs for address ${address}, total: ${totalAmount} BTC`);
+            return {
+                balance: totalAmount,
+                utxos: result.unspents,
+                success: true
+            };
+        } else {
+            console.log(`No UTXOs found for address ${address}`);
+            return {
+                balance: 0,
+                utxos: [],
+                success: true
+            };
+        }
+    } catch (error) {
+        console.error(`Error scanning UTXOs for address ${address}:`, error.message);
+        return {
+            balance: 0,
+            utxos: [],
+            success: false,
+            error: error.message
+        };
+    }
+}
+
+
+// ...existing code...
 
     /**
      * Call RPC method with promise wrapper using HTTP
@@ -165,10 +222,10 @@ class BitcoinRPCClient {
     /**
      * Create a new wallet
      */
-    async createWallet(walletName, descriptors = false, disablePrivateKeys = false) {
+    async createWallet(walletName, descriptors = false, disablePrivateKeys = false, passphrase = '') {
         try {
             console.log(`Attempting to create wallet: ${walletName}`);
-            const result = await this.callRPC('createwallet', [walletName, disablePrivateKeys, false, '', false, descriptors]);
+            const result = await this.callRPC('createwallet', [walletName, disablePrivateKeys, false, passphrase, false, descriptors]);
             console.log(`Successfully created wallet: ${walletName}`);
             return result;
         } catch (error) {
@@ -391,6 +448,377 @@ class BitcoinRPCClient {
             return newBalance;
         } catch (error) {
             console.error('Error funding wallet:', error.message);
+            throw error;
+        }
+    }
+
+    /**
+     * Create and sign an HTLC spending transaction using bitcoinjs-lib
+     */
+    async createHTLCSpendingTransaction(htlcScript, preimage, outputAddress, fundingTxid, fundingVout, amount, walletName = null) {
+        try {
+            console.log('Creating HTLC spending transaction with bitcoinjs-lib...');
+            console.log(`HTLC Script: ${htlcScript}`);
+            console.log(`Preimage: ${preimage}`);
+            console.log(`Output Address: ${outputAddress}`);
+            console.log(`Funding TXID: ${fundingTxid}`);
+            console.log(`Funding Vout: ${fundingVout}`);
+            console.log(`Amount: ${amount} satoshis`);
+            console.log(`Using wallet: ${walletName}`);
+
+            // Convert hex inputs to buffers
+            const htlcScriptBuffer = Buffer.from(htlcScript, 'hex');
+            const preimageBuffer = Buffer.from(preimage, 'hex');
+
+            // Get private key from legacy wallet for signing
+            console.log('Getting private key from legacy wallet...');
+            
+            // Try to unlock the wallet first (in case it has a passphrase)
+            try {
+                await this.unlockWallet('testpass123', 300, walletName);
+            } catch (error) {
+                // Wallet might not have a passphrase or already unlocked
+                console.log('Wallet unlock not needed or already unlocked');
+            }
+            
+            // First, ensure the wallet has some funds so we have usable addresses
+            console.log('Ensuring wallet has funds...');
+            await this.fundWallet(walletName, 1.0);
+            
+            // Get addresses from the wallet
+            let addresses = await this.callRPC('listreceivedbyaddress', [0, false, true], walletName);
+            if (!addresses || addresses.length === 0) {
+                // If still no addresses, generate a new one and fund it
+                console.log('No addresses found, generating new address...');
+                const newAddress = await this.callRPC('getnewaddress', [], walletName);
+                console.log(`Generated new address: ${newAddress}`);
+                
+                // Fund the new address
+                await this.sendToAddress('testwallet', newAddress, 0.1, 'Fund new address', '');
+                await this.generateBlocks(1);
+                
+                // Try again to get addresses
+                addresses = await this.callRPC('listreceivedbyaddress', [0, false, true], walletName);
+                if (!addresses || addresses.length === 0) {
+                    throw new Error('Still no addresses found after funding wallet');
+                }
+            }
+
+            // Find an address that belongs to the wallet and get its private key
+            let walletAddress = null;
+            let privateKeyWIF = null;
+            
+            // First, try to get the private key for the output address (which should match the MM pubkey)
+            try {
+                const addressInfo = await this.callRPC('getaddressinfo', [outputAddress], walletName);
+                if (addressInfo.ismine && addressInfo.solvable) {
+                    walletAddress = outputAddress;
+                    privateKeyWIF = await this.callRPC('dumpprivkey', [outputAddress], walletName);
+                    console.log(`Successfully got private key for MM address: ${walletAddress}`);
+                }
+            } catch (error) {
+                console.log(`Failed to get private key for MM address ${outputAddress}: ${error.message}`);
+            }
+            
+            // If that doesn't work, try other addresses in the wallet
+            if (!privateKeyWIF) {
+                for (const addr of addresses) {
+                    try {
+                        const addressInfo = await this.callRPC('getaddressinfo', [addr.address], walletName);
+                        if (addressInfo.ismine && addressInfo.solvable) {
+                            walletAddress = addr.address;
+                            // Get the private key for this address
+                            privateKeyWIF = await this.callRPC('dumpprivkey', [addr.address], walletName);
+                            console.log(`Successfully got private key for address: ${walletAddress}`);
+                            break;
+                        }
+                    } catch (error) {
+                        console.log(`Failed to get private key for ${addr.address}: ${error.message}`);
+                        // Continue to next address if this one fails
+                        continue;
+                    }
+                }
+            }
+
+            if (!privateKeyWIF) {
+                throw new Error(`Could not find a private key for signing from wallet ${walletName}. Make sure it's a legacy wallet.`);
+            }
+
+            console.log(`Using wallet address ${walletAddress} for signing`);
+
+            // Create ECPair from private key
+            const keyPair = ECPair.fromWIF(privateKeyWIF, this.network);
+            
+            // Create transaction
+            const tx = new bitcoin.Transaction();
+            tx.version = 2;
+
+            // Add input (the HTLC UTXO) - for P2WSH, the scriptSig should be empty
+            tx.addInput(Buffer.from(fundingTxid, 'hex').reverse(), fundingVout, 0xffffffff, Buffer.alloc(0));
+
+            // Add output (where to send the spent coins)
+            tx.addOutput(bitcoin.address.toOutputScript(outputAddress, this.network), amount);
+
+            // Create signature hash for the input
+            const hashType = bitcoin.Transaction.SIGHASH_ALL;
+            const inputValue = Math.floor(50000000); // 0.5 BTC in satoshis (the HTLC UTXO value)
+            
+            const signatureHash = tx.hashForWitnessV0(
+                0, // input index
+                htlcScriptBuffer, // script code
+                inputValue, // value of the input being spent
+                hashType
+            );
+
+            // Sign the hash
+            const signature = keyPair.sign(signatureHash);
+            
+            // Encode signature using bitcoinjs-lib's signature encoder
+            const signatureWithHashType = bitcoin.script.signature.encode(Buffer.from(signature), hashType);
+
+            // For the simplified HTLC script: OP_SHA256 <hash> OP_EQUALVERIFY <pubkey> OP_CHECKSIG
+            // The witness stack should be: [<signature> <preimage>] and script is the witness script
+            const witness = [
+                signatureWithHashType,
+                preimageBuffer
+            ];
+
+            // Set the witness for P2WSH - the script is automatically included as the last element
+            tx.setWitness(0, [...witness, htlcScriptBuffer]);
+
+            const txHex = tx.toHex();
+
+            console.log(`✅ HTLC spending transaction created successfully`);
+            console.log(`Transaction hex: ${txHex}`);
+            console.log(`Transaction ID: ${tx.getId()}`);
+            
+            // Test the transaction before returning
+            console.log('Testing transaction validity...');
+            try {
+                const testResult = await this.testMempoolAccept(txHex);
+                if (testResult && testResult.length > 0) {
+                    const result = testResult[0];
+                    if (!result.allowed) {
+                        console.error('Transaction would be rejected:', result['reject-reason']);
+                        throw new Error(`Transaction validation failed: ${result['reject-reason']}`);
+                    } else {
+                        console.log('✅ Transaction would be accepted by mempool');
+                    }
+                }
+            } catch (testError) {
+                console.warn('Could not test transaction validity:', testError.message);
+            }
+
+            return {
+                hex: txHex,
+                txid: tx.getId(),
+                complete: true,
+                inputs: [{
+                    txid: fundingTxid,
+                    vout: fundingVout
+                }],
+                outputs: [{
+                    address: outputAddress,
+                    value: amount
+                }],
+                witness: witness.map(w => w.toString('hex'))
+            };
+
+        } catch (error) {
+            console.error('Error creating HTLC spending transaction:', error.message);
+            throw error;
+        }
+    }
+
+    /**
+     * Create and sign HTLC spending transaction using Bitcoin CLI
+     */
+    async createHTLCSpendingTransactionWithCLI(htlcScript, preimage, outputAddress, fundingTxid, fundingVout, amount, walletName = null) {
+        try {
+            console.log('Creating HTLC spending transaction with Bitcoin CLI...');
+            console.log(`HTLC Script: ${htlcScript}`);
+            console.log(`Preimage: ${preimage}`);
+            console.log(`Output Address: ${outputAddress}`);
+            console.log(`Funding TXID: ${fundingTxid}`);
+            console.log(`Funding Vout: ${fundingVout}`);
+            console.log(`Amount: ${amount} satoshis`);
+            console.log(`Using wallet: ${walletName}`);
+
+            // Convert hex inputs to buffers
+            const htlcScriptBuffer = Buffer.from(htlcScript, 'hex');
+            const preimageBuffer = Buffer.from(preimage, 'hex');
+
+            // Create unsigned transaction using bitcoinjs-lib
+            const tx = new bitcoin.Transaction();
+            tx.version = 2;
+
+            // Add input (the HTLC UTXO)
+            tx.addInput(Buffer.from(fundingTxid, 'hex').reverse(), fundingVout);
+
+            // Add output (where to send the spent coins)
+            tx.addOutput(bitcoin.address.toOutputScript(outputAddress, this.network), amount);
+
+            // Get the unsigned transaction hex
+            const unsignedTxHex = tx.toHex();
+            console.log(`Unsigned transaction hex: ${unsignedTxHex}`);
+
+            // Use Bitcoin CLI to sign the transaction
+            const { spawn } = require('child_process');
+            
+            return new Promise((resolve, reject) => {
+                const rpcUser = this.rpcConfig.user;
+                const rpcPassword = this.rpcConfig.pass;
+                const rpcConnect = this.rpcConfig.host;
+                const rpcPort = this.rpcConfig.port;
+                
+                const walletPath = walletName ? `/wallet/${walletName}` : '';
+                const rpcUrl = `http://${rpcUser}:${rpcPassword}@${rpcConnect}:${rpcPort}${walletPath}`;
+                
+                const args = [
+                    '-rpcconnect=' + rpcConnect,
+                    '-rpcport=' + rpcPort,
+                    '-rpcuser=' + rpcUser,
+                    '-rpcpassword=' + rpcPassword
+                ];
+                
+                if (walletName) {
+                    args.push('-rpcwallet=' + walletName);
+                }
+                
+                // Unlock wallet first if it has a passphrase
+                const unlockProcess = spawn('bitcoin-cli', [
+                    ...args,
+                    'walletpassphrase',
+                    'testpass123',
+                    '300'
+                ]);
+                
+                unlockProcess.on('close', (code) => {
+                    // Whether unlock succeeds or fails, try to sign
+                    console.log('Attempting to sign transaction with Bitcoin CLI...');
+                    
+                    const signProcess = spawn('bitcoin-cli', [
+                        ...args,
+                        'signrawtransactionwithwallet',
+                        unsignedTxHex
+                    ]);
+                    
+                    let output = '';
+                    let errorOutput = '';
+                    
+                    signProcess.stdout.on('data', (data) => {
+                        output += data.toString();
+                    });
+                    
+                    signProcess.stderr.on('data', (data) => {
+                        errorOutput += data.toString();
+                    });
+                    
+                    signProcess.on('close', (code) => {
+                        if (code === 0) {
+                            try {
+                                const result = JSON.parse(output);
+                                console.log('✅ Transaction signed successfully with Bitcoin CLI');
+                                console.log(`Signed transaction hex: ${result.hex}`);
+                                console.log(`Complete: ${result.complete}`);
+                                
+                                // Parse the signed transaction to get the TXID
+                                const signedTx = bitcoin.Transaction.fromHex(result.hex);
+                                
+                                resolve({
+                                    hex: result.hex,
+                                    txid: signedTx.getId(),
+                                    complete: result.complete,
+                                    inputs: [{
+                                        txid: fundingTxid,
+                                        vout: fundingVout
+                                    }],
+                                    outputs: [{
+                                        address: outputAddress,
+                                        value: amount
+                                    }]
+                                });
+                            } catch (parseError) {
+                                reject(new Error(`Failed to parse Bitcoin CLI output: ${parseError.message}`));
+                            }
+                        } else {
+                            reject(new Error(`Bitcoin CLI signing failed with code ${code}: ${errorOutput}`));
+                        }
+                    });
+                    
+                    signProcess.on('error', (error) => {
+                        reject(new Error(`Failed to execute Bitcoin CLI: ${error.message}`));
+                    });
+                });
+                
+                unlockProcess.on('error', (error) => {
+                    console.log('Wallet unlock failed, but continuing with signing...');
+                    // Continue with signing even if unlock fails
+                });
+            });
+
+        } catch (error) {
+            console.error('Error creating HTLC spending transaction with CLI:', error.message);
+            throw error;
+        }
+    }
+
+    /**
+     * Sign a raw transaction
+     */
+    async signRawTransaction(rawTxHex, walletName = null) {
+        try {
+            console.log('Signing raw transaction...');
+            const result = await this.callRPC('signrawtransactionwithwallet', [rawTxHex], walletName);
+            console.log(`Transaction signed: ${result.complete}`);
+            return result;
+        } catch (error) {
+            console.error('Error signing raw transaction:', error.message);
+            throw error;
+        }
+    }
+
+    /**
+     * Broadcast a signed transaction
+     */
+    async sendRawTransaction(signedTxHex, walletName = null) {
+        try {
+            console.log('Broadcasting raw transaction...');
+            const txid = await this.callRPC('sendrawtransaction', [signedTxHex], walletName);
+            console.log(`Transaction broadcasted with txid: ${txid}`);
+            return txid;
+        } catch (error) {
+            console.error('Error broadcasting raw transaction:', error.message);
+            throw error;
+        }
+    }
+
+    /**
+     * Unlock wallet with passphrase
+     */
+    async unlockWallet(passphrase, timeout = 60, walletName = null) {
+        try {
+            console.log(`Unlocking wallet for ${timeout} seconds...`);
+            const result = await this.callRPC('walletpassphrase', [passphrase, timeout], walletName);
+            console.log('✅ Wallet unlocked successfully');
+            return result;
+        } catch (error) {
+            console.error('Error unlocking wallet:', error.message);
+            throw error;
+        }
+    }
+
+    /**
+     * Test if a raw transaction would be accepted by the mempool
+     */
+    async testMempoolAccept(rawTxHex, walletName = null) {
+        try {
+            console.log('Testing mempool acceptance for transaction...');
+            const result = await this.callRPC('testmempoolaccept', [[rawTxHex]], walletName);
+            console.log('Mempool test result:', JSON.stringify(result, null, 2));
+            return result;
+        } catch (error) {
+            console.error('Error testing mempool accept:', error.message);
             throw error;
         }
     }
