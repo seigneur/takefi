@@ -93,7 +93,7 @@ class ChainlinkFunctionsService {
                     awsSecretARN ?? "",
                     ethTxHash,
                     process.env.FUNCTION_SELECTOR ?? "0x13d79a0b",
-                    process.env.TOPIC ?? "0xa07a543ab8a018198e99ca0184c93fe9050a79400a0a723441f84de1d972cc17"
+                    process.env.TX_LOG_TOPIC ?? "0xa07a543ab8a018198e99ca0184c93fe9050a79400a0a723441f84de1d972cc17"
                 ],
                 codeLanguage: CodeLanguage.JavaScript,
                 expectedReturnType: ReturnType.string,

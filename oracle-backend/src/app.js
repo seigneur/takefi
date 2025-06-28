@@ -4,7 +4,7 @@ const cors = require('cors');
 const rateLimit = require('express-rate-limit');
 require('dotenv').config();
 
-const swapController = require('./controllers/swapController');
+const oracleController = require('./controllers/oracleController');
 const bitcoinController = require('./controllers/bitcoinController');
 const { errorHandler, notFoundHandler } = require('./middleware/errorHandler');
 const logger = require('./utils/logger');
@@ -75,7 +75,7 @@ app.get('/health', (req, res) => {
 });
 
 // API routes
-app.use('/api/oracle', swapController);
+app.use('/api/oracle', oracleController);
 app.use('/api/bitcoin', bitcoinController);
 
 // Error handling middleware

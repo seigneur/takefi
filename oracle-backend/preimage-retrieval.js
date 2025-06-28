@@ -5,7 +5,7 @@ const secretARN = args[1];
 const awsRetrievalUrl = `https://secretsmanager.${region}.amazonaws.com/`;
 const TX_HASH = args[2] || "0x";
 const FUNCTION_SELECTOR = args[3] || "0x13d79a0b";
-const TOPIC = args[4] || "0xa07a543ab8a018198e99ca0184c93fe9050a79400a0a723441f84de1d972cc17";
+const TX_LOG_TOPIC = args[4] || "0xa07a543ab8a018198e99ca0184c93fe9050a79400a0a723441f84de1d972cc17";
 
 
 function strip0x(hex) {
@@ -88,7 +88,7 @@ try {
   }
   if (receipt.logs && receipt.logs.length > 0) {
     for (const log of receipt.logs) {
-        if (log.topics[0] === TOPIC) {
+        if (log.topics[0] === TX_LOG_TOPIC) {
             const owner = parseAddress(strip0x(log.topics[1]));
             const data = strip0x(log.data);
             const sellToken = parseAddress(data.slice(0, 64));
@@ -97,7 +97,6 @@ try {
             const buyAmount = parseUint256(data.slice(192, 256));
 
             // Implement checks for address and amount
-            console.log(secretObject);
 
             return Functions.encodeString(secretObject.preimage);
         }
