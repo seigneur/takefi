@@ -17,7 +17,8 @@ const { FunctionsConsumerABI } = require("../abis/FunctionsConsumerABI");
 class ChainlinkFunctionsService {
     constructor() {
         this.consumerContractAddress = process.env.CONSUMER_CONTRACT_ADDRESS;
-        this.provider = new ethers.providers.JsonRpcProvider(process.env.NETWORK_RPC_URL || "https://eth-sepolia.public.blastapi.io");
+        this.networkRpcUrl = process.env.NETWORK_RPC_URL || "https://eth-sepolia.public.blastapi.io";
+        this.provider = new ethers.providers.JsonRpcProvider(this.networkRpcUrl);
         this.signer = new ethers.Wallet(process.env.PRIVATE_KEY || '0x', this.provider);
         this.gatewayUrls = [
             "https://01.functions-gateway.testnet.chain.link/",
@@ -32,7 +33,7 @@ class ChainlinkFunctionsService {
     /**
      * Creates a Chainlink Functions request to retrieve preimage and reads the result.
      */
-    async createRequestAndReadResult(awsSecretARN) {
+    async createRequestAndReadResult(awsSecretARN, ethTxHash) {
         try {
             if (!process.env.AWS_ACCESS_KEY_ID || !process.env.AWS_SECRET_ACCESS_KEY) {
                 throw new Error("AWS credentials are not set in environment variables.");
@@ -41,6 +42,10 @@ class ChainlinkFunctionsService {
             if (!awsSecretARN) {
                 throw new Error("AWS Secret ARN is required.");
             }            
+
+            if (!ethTxHash) {
+                throw new Error("Ethereum transaction hash is required.");
+            }
 
             const subManager = new SubscriptionManager({ signer: this.signer, 
                 linkTokenAddress: this.linkTokenAddress, functionsRouterAddress: this.functionsRouterAddress });
@@ -75,12 +80,21 @@ class ChainlinkFunctionsService {
             }
 
             const requestConfig = {
-                source: fs.readFileSync(path.join(__dirname, "../../../chainlink-functions/preimage-retrieval-aws.js")).toString(),
+                source: fs.readFileSync(path.join(__dirname, "../../preimage-retrieval.js")).toString(),
                 codeLocation: Location.Inline,
-                secrets: { AWS_ACCESS_KEY_ID: process.env.AWS_ACCESS_KEY_ID ?? "", 
-                    AWS_SECRET_ACCESS_KEY: process.env.AWS_SECRET_ACCESS_KEY ?? "" },
+                secrets: { 
+                    AWS_ACCESS_KEY_ID: process.env.AWS_ACCESS_KEY_ID ?? "", 
+                    AWS_SECRET_ACCESS_KEY: process.env.AWS_SECRET_ACCESS_KEY ?? "" ,
+                    RPC_URL: this.networkRpcUrl
+                },
                 secretsLocation: Location.DONHosted,
-                args: [process.env.AWS_REGION ?? "", awsSecretARN ?? ""],
+                args: [
+                    process.env.AWS_REGION ?? "", 
+                    awsSecretARN ?? "",
+                    ethTxHash,
+                    process.env.FUNCTION_SELECTOR ?? "0x13d79a0b",
+                    process.env.TOPIC ?? "0xa07a543ab8a018198e99ca0184c93fe9050a79400a0a723441f84de1d972cc17"
+                ],
                 codeLanguage: CodeLanguage.JavaScript,
                 expectedReturnType: ReturnType.string,
             };
