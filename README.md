@@ -1,34 +1,18 @@
 # Takefi - Bitcoin Cross-Chain Oracle for RWA Token Swaps
 
-## 🚀 Overview
+## Overview
 
 This project implements a trustless cross-chain swap mechanism that allows users to exchange Bitcoin (BTC) for Real-World Asset (RWA) tokens on Ethereum while keeping their BTC native on the Bitcoin blockchain. The system uses Hash Time-Locked Contracts (HTLCs), Chainlink oracles, and market maker liquidity to create secure, atomic swaps without requiring wrapped tokens or custodial solutions.
 
-## 🏗️ Architecture
+## Sponsors used - 
+Chainlink Functions, Avalanche, AWS, 
 
-The system consists of three main actors working together:
-
-### 🧑‍💻 **User**
-- Holds Bitcoin and wants to swap for RWA tokens (e.g., XCOINB)
-- Locks BTC in a Bitcoin script with timelock protection
-- Receives RWA tokens on Ethereum upon successful swap
-
-### 🏦 **Market Maker (MM)**
-- Provides liquidity for both BTC and RWA tokens
-- Pre-funds the system to enable instant swaps
-- Earns fees from successful transactions
-- Takes on inventory and market risk
-
-### 🔮 **Oracle (Chainlink)**
-- Generates secure preimages for HTLC scripts
-- Monitors both Bitcoin and Ethereum networks
-- Triggers atomic swap execution when conditions are met
-- Stores sensitive data securely in AWS Secrets Manager
+## Architecture
 
 ## RPC
 https://bitcoin-rpc.publicnode.com
 
-## 🔄 Swap Flow
+## Swap Flow
 
 ```mermaid
 sequenceDiagram
@@ -53,6 +37,26 @@ sequenceDiagram
     O->>MM: Provide preimage
     MM->>BTC: Claim BTC using preimage
 ```
+
+
+The system consists of three main actors working together:
+
+### 🧑‍💻 **User**
+- Holds Bitcoin and wants to swap for RWA tokens (e.g., XCOINB)
+- Locks BTC in a Bitcoin script with timelock protection
+- Receives RWA tokens on Ethereum upon successful swap
+
+### 🏦 **Market Maker (MM)**
+- Provides liquidity for both BTC and RWA tokens
+- Pre-funds the system to enable instant swaps
+- Earns fees from successful transactions
+- Takes on inventory and market risk
+
+### 🔮 **Oracle (Chainlink)**
+- Generates secure preimages for HTLC scripts
+- Monitors both Bitcoin and Ethereum networks
+- Triggers atomic swap execution when conditions are met
+- Stores sensitive data securely in AWS Secrets Manager
 
 ## 🔐 Security Features
 
@@ -89,6 +93,7 @@ sequenceDiagram
 - **Chainlink integration**: Oracle data feeds and automation
 - **Multi-signature security**: Protected fund management
 
+
 ## 🎯 Key Benefits
 
 - **🔒 Non-Custodial**: Users maintain control of their Bitcoin
@@ -98,61 +103,6 @@ sequenceDiagram
 - **💰 Cost Effective**: No wrapped token minting/burning fees
 - **📈 Scalable**: Support for multiple RWA token types
 
-## 🚧 Development Status
-
-This project is currently in active development. The initial phase focuses on:
-
-1. ✅ **Oracle Backend**: Preimage generation and Bitcoin script creation
-2. 🔄 **Frontend Interface**: User-friendly swap interface
-3. 🔄 **Smart Contracts**: Ethereum-side token management
-4. 📋 **Integration**: Chainlink Functions and AWS Secrets Manager
-5. 🧪 **Testing**: Regtest and testnet deployment
-
-## 🔧 Quick Start
-
-### Prerequisites
-- Bitcoin Core (regtest mode)
-- Node.js 18+
-- AWS Account (for Secrets Manager)
-- Ethereum development environment
-
-### Bitcoin Core Setup
-```powershell
-# Create unencrypted descriptor wallet for development
-bitcoin-cli -regtest createwallet "mmm_desc" false false "" false false true
-
-# Generate and fund addresses
-$MM_ADDRESS = bitcoin-cli -regtest -rpcwallet=mmm_desc getnewaddress
-bitcoin-cli -regtest generatetoaddress 101 $MM_ADDRESS
-```
-
-### Oracle Backend
-```bash
-# Clone repository
-git clone <repository-url>
-cd bitcoin-oracle-backend
-
-# Install dependencies
-npm install
-
-# Configure environment
-cp .env.example .env
-
-# Start development server
-npm run dev
-```
-
-## 📋 Roadmap
-
-- [ ] **Phase 1**: Core oracle functionality and Bitcoin integration
-- [ ] **Phase 2**: Ethereum smart contracts and Chainlink integration  
-- [ ] **Phase 3**: Frontend interface and user experience
-- [ ] **Phase 4**: Market maker onboarding and liquidity
-- [ ] **Phase 5**: Mainnet deployment and security audits
-
-## 🤝 Contributing
-
-We welcome contributions from the Bitcoin and DeFi communities! Please see our [Contributing Guidelines](CONTRIBUTING.md) for details on how to get involved.
 
 ## 📄 License
 
