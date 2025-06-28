@@ -1,6 +1,7 @@
 const BitcoinWalletManager = require('./bitcoin-wallet-simple');
 const BitcoinRPCClient = require('./bitcoin-rpc');
 const axios = require('axios');
+const readline = require('readline');
 
 const ORACLE_BASE_URL = 'http://localhost:3001';
 
@@ -8,6 +9,21 @@ class HTLCIntegrationTest {
     constructor() {
         this.walletManager = new BitcoinWalletManager();
         this.rpcClient = new BitcoinRPCClient();
+        this.rl = readline.createInterface({
+            input: process.stdin,
+            output: process.stdout
+        });
+    }
+
+    /**
+     * Wait for user input before proceeding
+     */
+    async waitForUser(message = "Press Enter to continue...") {
+        return new Promise((resolve) => {
+            this.rl.question(`\n${message}`, () => {
+                resolve();
+            });
+        });
     }
 
     async runFullIntegrationTest() {
@@ -15,27 +31,47 @@ class HTLCIntegrationTest {
 
         try {
             // Check if wallets already exist, if not create them
-            let userWallet = this.walletManager.getWallet('user');
-            if (!userWallet) {
-                console.log('Creating new user wallet...');
-                userWallet = this.walletManager.createWallet('user');
+            const userWalletName = 'user-test';
+            // Check if wallet exists and create if not
+            if (!(await this.rpcClient.isWalletLoaded(userWalletName))) {
+                console.log(`Creating or loading wallet: ${userWalletName}`);
+                await this.rpcClient.createWallet(userWalletName);
             } else {
-                console.log('Using existing user wallet...');
+                console.log(`Wallet ${userWalletName} is already loaded`);
             }
+            const userWallet = {
+                name: userWalletName,
+                address: await this.rpcClient.getNewAddress(userWalletName)
+            };
+            console.log(`User wallet  ${userWallet.name} with address ${userWallet.address}`);
 
-            let mmWallet = this.walletManager.getWallet('marketmaker');
-            if (!mmWallet) {
-                console.log('Creating new market maker wallet...');
-                mmWallet = this.walletManager.createWallet('marketmaker');
+            let mmWalletName = 'htlc_test_wallet';
+            if (!(await this.rpcClient.isWalletLoaded(mmWalletName))) {
+                console.log(`Creating or loading wallet: ${mmWalletName}`);
+                // Create a new legacy wallet with a known passphrase
+                await this.rpcClient.createWallet(mmWalletName, false, false, 'testpass123'); // Create legacy wallet with passphrase
             } else {
-                console.log('Using existing market maker wallet...');
+                console.log(`Wallet ${mmWalletName} is already loaded`);
             }
-            
-            this.walletManager.displayWallet('user');
-            this.walletManager.displayWallet('marketmaker');
-
+            const mmWallet = {
+                name: mmWalletName,
+                address: await this.rpcClient.getNewAddress(mmWalletName)
+            };
+            console.log(`Market Maker wallet ${mmWallet.name} with address ${mmWallet.address}`);
+                // Get the public key from the wallet address
+                console.log('Getting MM wallet public key...');
+                try {
+                    const addressInfo = await this.rpcClient.getAddressInfo(mmWallet.address, mmWalletName);
+                    mmWallet.publicKey = addressInfo.pubkey;
+                    console.log(`MM Public Key: ${mmWallet.publicKey}`);
+                    
+                 } catch (error) {
+                    console.error('Error getting wallet keys:', error.message);
+                    throw error;
+                }
             // Step 2: Test Bitcoin RPC connection
             console.log('\nStep 2: Testing Bitcoin RPC connection...');
+            await this.waitForUser("🔌 Ready to test Bitcoin RPC connection? Press Enter...");
             const isConnected = await this.rpcClient.testConnection();
             if (!isConnected) {
                 throw new Error('Failed to connect to Bitcoin Core. Please check if Bitcoin Core is running and RPC credentials are correct.');
@@ -43,10 +79,12 @@ class HTLCIntegrationTest {
 
             // Step 3: Check wallet balance and auto-fund if necessary
             console.log('\nStep 3: Checking wallet balance and auto-funding...');
-            await this.checkAndFundWallet('testwallet', 1.0);
+            await this.waitForUser("💰 Ready to check wallet balance and fund if needed? Press Enter...");
+            await this.checkAndFundWallet('user-test', 1.0);
 
             // Step 4: Create preimage via oracle
             console.log('\nStep 4: Creating preimage via Oracle Backend...');
+            await this.waitForUser("🔮 Ready to create HTLC preimage via Oracle? Press Enter...");
             const oracleResponse = await this.createPreimageViaOracle(
                 userWallet.address,
                 mmWallet.publicKey,
@@ -61,41 +99,92 @@ class HTLCIntegrationTest {
 
             // Step 4: Send real Bitcoin transaction to HTLC address
             console.log('\nStep 4: Sending 0.5 BTC to HTLC address...');
-            const txid = await this.sendBitcoinToHTLC(oracleResponse.data.htlcAddress, 0.5);
+            await this.waitForUser(`💸 Ready to send 0.5 BTC to HTLC address ${oracleResponse.data.htlcAddress}? Press Enter...`);
+            // First fund the htlc_test_wallet so it has coins to send
+            await this.checkAndFundWallet(mmWallet.name, 1.0);
+            const txid = await this.sendBitcoinToHTLC(oracleResponse.data.htlcAddress, 0.5, mmWallet.name);
             console.log(`✅ Successfully sent 0.5 BTC to HTLC address`);
             console.log(`Transaction ID: ${txid}`);
 
             // Step 5: Verify transaction
             console.log('\nStep 5: Verifying transaction...');
-            await this.verifyHTLCTransaction(oracleResponse.data.htlcAddress, txid);
+            await this.waitForUser("🔍 Ready to verify the HTLC funding transaction? Press Enter...");
+            let txDeets = await this.verifyHTLCTransaction(oracleResponse.data.htlcAddress, txid, mmWallet.name);
+            console.log('Transaction Details:', JSON.stringify(txDeets, null, 2));
 
-            // // Sign with the generated preimage (in real scenario, get from oracle)
-            // const signedTx = this.walletManager.signHTLCTransactionPreimage(
-            //     spendingTx,
-            //     fundingTx,
-            //     htlcScript,
-            //     mmWallet.keyPair,
-            //     preimage // In real scenario, get this from oracle reveal endpoint
-            // );
+            // Show the balance of the HTLC address
+            console.log('\nChecking HTLC address balance...');
+            const htlcBalanceResult = await this.rpcClient.getAddressUTXOBalance(oracleResponse.data.htlcAddress);
+            if (htlcBalanceResult.success) {
+                console.log(`HTLC Address Balance: ${htlcBalanceResult.balance} BTC`);
+                console.log(`Number of UTXOs: ${htlcBalanceResult.utxos.length}`);
+                if (htlcBalanceResult.utxos.length > 0) {
+                    console.log('HTLC UTXOs:', htlcBalanceResult.utxos.map(utxo => ({
+                        txid: utxo.txid,
+                        vout: utxo.vout,
+                        amount: utxo.amount
+                    })));
+                }
+            } else {
+                console.log('Failed to check HTLC balance:', htlcBalanceResult.error);
+            }
 
-            // console.log(`Signed Transaction: ${signedTx.toHex()}`);
-
-            // // Step 6: Verify the process
-            // console.log('\nStep 6: Verification...');
-            // const witness = signedTx.ins[0].witness;
-            // const revealedPreimage = witness[1].toString('hex');
+            // Step 6: Create a transaction to spend the HTLC
+            console.log('\nStep 6: Creating spending transaction...');
+            await this.waitForUser("🔓 Ready to create HTLC spending transaction with preimage? Press Enter...");
+            const htlcScript = oracleResponse.data.htlcScript;
+            const preimage = oracleResponse.data.preimage; // This should be the preimage returned
             
-            // console.log(`Revealed Preimage: ${revealedPreimage}`);
-            // console.log(`Preimage matches: ${revealedPreimage === preimage}`);
+            // Get the UTXO details for spending
+            if (htlcBalanceResult.utxos.length === 0) {
+                throw new Error('No UTXOs found for HTLC address');
+            }
+            
+            const htlcUtxo = htlcBalanceResult.utxos[0]; // Use the first UTXO
+            const spendingAmount = Math.floor((htlcUtxo.amount * 100000000) - 1000); // Subtract 1000 sats for fee
+            
+            console.log(`Using UTXO: ${htlcUtxo.txid}:${htlcUtxo.vout} with ${htlcUtxo.amount} BTC`);
+            console.log(`Spending amount after fee: ${spendingAmount} satoshis`);
+            
+            const spendingTx = await this.rpcClient.createHTLCSpendingTransaction(
+                htlcScript,
+                preimage,
+                mmWallet.address,
+                htlcUtxo.txid,
+                htlcUtxo.vout,
+                spendingAmount,
+                mmWallet.name
+            );
+            console.log(`✅ HTLC spending transaction created and signed successfully`);
+            console.log(`Transaction ID: ${spendingTx.txid}`);
+            console.log(`Transaction hex: ${spendingTx.hex}`);
+            
+            // Step 7: Broadcast the signed transaction
+            console.log('\nStep 7: Broadcasting the signed transaction...');
+            await this.waitForUser(`📡 Ready to broadcast spending transaction ${spendingTx.txid}? Press Enter...`);
+            const broadcastResult = await this.rpcClient.sendRawTransaction(spendingTx.hex);
+            if (!broadcastResult) {
+                throw new Error('Failed to broadcast the signed transaction. Please check the wallet and network status.');
+            }
+            console.log(`✅ Transaction broadcasted successfully`);
+            console.log(`Broadcasted Transaction ID: ${broadcastResult}`);
+            
+            // Generate a block to confirm the spending transaction
+            console.log('Generating 1 block to confirm spending transaction...');
+            await this.rpcClient.generateBlocks(1);
+
+            // Close readline interface
+            this.rl.close();
+
 
             return {
                 success: true,
                 userWallet,
                 mmWallet,
                 oracleResponse: oracleResponse.data,
-                transactionId: txid
-                // signedTransaction: signedTx.toHex(),
-                // revealedPreimage
+                fundingTransactionId: txid,
+                spendingTransactionId: broadcastResult,
+                htlcBalance: htlcBalanceResult
             };
 
         } catch (error) {
@@ -103,6 +192,8 @@ class HTLCIntegrationTest {
             if (error.response) {
                 console.error('Response data:', error.response.data);
             }
+            // Close readline interface on error
+            this.rl.close();
             return { success: false, error: error.message };
         }
     }
@@ -130,13 +221,7 @@ class HTLCIntegrationTest {
         try {
             console.log(`Checking balance for wallet: ${walletName}`);
             
-            // Check if wallet exists and create if not
-            if (!(await this.rpcClient.isWalletLoaded(walletName))) {
-                console.log(`Creating or loading wallet: ${walletName}`);
-                await this.rpcClient.createWallet(walletName);
-            } else {
-                console.log(`Wallet ${walletName} is already loaded`);
-            }
+            
 
             // Get current balance using wallet-specific call
             const currentBalance = await this.rpcClient.getWalletBalance(walletName);
@@ -174,9 +259,17 @@ class HTLCIntegrationTest {
     /**
      * Send Bitcoin to HTLC address using Bitcoin Core
      */
-    async sendBitcoinToHTLC(htlcAddress, amount, walletName = 'testwallet') {
+    async sendBitcoinToHTLC(htlcAddress, amount, walletName = 'htlc_test_wallet') {
         try {
             console.log(`Sending ${amount} BTC to HTLC address: ${htlcAddress}`);
+            
+            // Try to unlock the wallet first if it's encrypted
+            try {
+                await this.rpcClient.unlockWallet('testpass123', 300, walletName);
+                console.log('Wallet unlocked for sending transaction');
+            } catch (error) {
+                console.log('Wallet unlock not needed or already unlocked');
+            }
             
             // Import the HTLC address for monitoring
             try {
@@ -207,10 +300,11 @@ class HTLCIntegrationTest {
         }
     }
 
+
     /**
      * Verify HTLC transaction
      */
-    async verifyHTLCTransaction(htlcAddress, expectedTxid, walletName = 'testwallet') {
+    async verifyHTLCTransaction(htlcAddress, expectedTxid, walletName = 'htlc_test_wallet') {
         try {
             console.log('Verifying HTLC transaction...');
             
@@ -264,22 +358,6 @@ class HTLCIntegrationTest {
             console.error('Error verifying HTLC transaction:', error.message);
             throw error;
         }
-    }
-
-    async createPreimageViaOracle(userBtcAddress, mmPubkey, btcAmount, timelock) {
-        const response = await axios.post(`${ORACLE_BASE_URL}/api/oracle/create-preimage`, {
-            userBtcAddress,
-            mmPubkey,
-            btcAmount,
-            timelock
-        });
-        
-        return response.data;
-    }
-
-    async getSwapDetails(swapId) {
-        const response = await axios.get(`${ORACLE_BASE_URL}/api/oracle/swap/${swapId}`);
-        return response.data;
     }
 }
 

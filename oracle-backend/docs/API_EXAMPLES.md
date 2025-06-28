@@ -5,31 +5,55 @@ This document provides practical examples for using the Bitcoin Oracle Backend A
 ## Environment Setup
 
 ```bash
-export API_BASE_URL="http://localhost:3000/api/oracle"
+export API_BASE_URL="http://localhost:3001/api/oracle"
 export CONTENT_TYPE="Content-Type: application/json"
 ```
+
+## Network Configuration
+
+The API behavior changes based on the `BITCOIN_NETWORK` environment variable:
+
+- **regtest/testnet**: Preimage is included in responses for testing
+- **mainnet**: Preimage is never exposed for security
+
+## HTLC Script Structure
+
+The oracle generates simplified HTLC scripts with the following structure:
+
+```
+OP_SHA256 <hash> OP_EQUALVERIFY <market_maker_pubkey> OP_CHECKSIG
+```
+
+This allows immediate spending by the market maker with the correct preimage.
+
+**Witness Stack for Spending:**
+```
+[<signature>, <preimage>]
+```
+
+**Address Type:** P2WSH (SegWit v0) for better fee efficiency and compatibility.
 
 ## 1. Health Check
 
 Check if the service is running and healthy.
 
 ```bash
-curl -X GET http://localhost:3000/health
+curl -X GET http://localhost:3001/health
 ```
 
 **Response:**
 ```json
 {
   "status": "healthy",
-  "timestamp": "2025-06-21T12:00:00.000Z",
+  "timestamp": "2025-06-28T12:00:00.000Z",
   "version": "1.0.0",
   "environment": "development"
 }
 ```
 
-## 2. Create HTLC Preimage (Testnet)
+## 2. Create HTLC Preimage
 
-Create a new Bitcoin HTLC for testnet.
+Create a new Bitcoin HTLC with P2WSH (SegWit) addresses.
 
 ```bash
 curl -X POST $API_BASE_URL/create-preimage \
@@ -42,16 +66,32 @@ curl -X POST $API_BASE_URL/create-preimage \
   }'
 ```
 
-**Response:**
+**Response (regtest/testnet - includes preimage):**
 ```json
 {
   "success": true,
   "data": {
     "swapId": "123e4567-e89b-12d3-a456-426614174000",
-    "hash": "a665127d4c9c280b08bb727d3323d8ef0d6a75a853bcbd0d2dc9b2f83e1d2df2",
-    "htlcScript": "63a820a665127d4c9c280b08bb727d3323d8ef0d6a75a853bcbd0d2dc9b2f83e1d2df28821026477115981fe981a6918a6297d9803c4dc04f328f22041bedff886bbc2962e01ac67029000b27576a914...",
-    "htlcAddress": "2MzQwSSnBHWHqSAqtTVQ6v47XtaisrJa1Vc",
-    "expiresAt": "2025-06-22T12:00:00.000Z",
+    "preimage": "bcdc0d6405be856047b579636c34edb5a898c0387e78c2283754891d20f17c67",
+    "hash": "93631b2e5cfddf118496000d945dfa830380729afe18bd4395c599a55cc73c14",
+    "htlcScript": "a82093631b2e5cfddf118496000d945dfa830380729afe18bd4395c599a55cc73c1488210367b7d22df3e63c6a4d4c92752826e5942fe453f6fe5d539ed604cc7f52f6d6d7ac",
+    "htlcAddress": "bcrt1qspgxkr7jy04hjlsjv4r3mhzgvcj47sku4akl4xau2qgda3amp05qs2hz78",
+    "expiresAt": "2025-06-29T12:00:00.000Z",
+    "timelock": 144
+  }
+}
+```
+
+**Response (mainnet - no preimage):**
+```json
+{
+  "success": true,
+  "data": {
+    "swapId": "123e4567-e89b-12d3-a456-426614174000",
+    "hash": "93631b2e5cfddf118496000d945dfa830380729afe18bd4395c599a55cc73c14",
+    "htlcScript": "a82093631b2e5cfddf118496000d945dfa830380729afe18bd4395c599a55cc73c1488210367b7d22df3e63c6a4d4c92752826e5942fe453f6fe5d539ed604cc7f52f6d6d7ac",
+    "htlcAddress": "bc1qspgxkr7jy04hjlsjv4r3mhzgvcj47sku4akl4xau2qgda3amp05qs2hz78",
+    "expiresAt": "2025-06-29T12:00:00.000Z",
     "timelock": 144
   }
 }
@@ -103,7 +143,41 @@ curl -X GET $API_BASE_URL/swap/$SWAP_ID
 }
 ```
 
-## 5. Reveal Preimage (Chainlink Integration)
+## 5. Get Hash for Market Maker Signature
+
+**NEW ENDPOINT** - Get the hash that the market maker needs to sign for HTLC spending.
+
+```bash
+# Replace with actual swap ID
+SWAP_ID="123e4567-e89b-12d3-a456-426614174000"
+
+curl -X GET $API_BASE_URL/swap/$SWAP_ID/hash
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "data": {
+    "swapId": "123e4567-e89b-12d3-a456-426614174000",
+    "hash": "a665127d4c9c280b08bb727d3323d8ef0d6a75a853bcbd0d2dc9b2f83e1d2df2",
+    "htlcScript": "a820a665127d4c9c280b08bb727d3323d8ef0d6a75a853bcbd0d2dc9b2f83e1d2df288210367b7d22df3e63c6a4d4c92752826e5942fe453f6fe5d539ed604cc7f52f6d6d7ac",
+    "htlcAddress": "bcrt1qspgxkr7jy04hjlsjv4r3mhzgvcj47sku4akl4xau2qgda3amp05qs2hz78",
+    "btcAmount": 50000000,
+    "timelock": 144,
+    "expiresAt": "2025-06-29T12:00:00.000Z",
+    "status": "active"
+  }
+}
+```
+
+**Use Case:** Market makers can use this endpoint to:
+- Get the preimage hash they need to verify
+- Retrieve HTLC script details for transaction construction  
+- Check swap expiration and status before signing
+- Validate swap parameters before committing funds
+
+## 6. Reveal Preimage (Chainlink Integration)
 
 Reveal the preimage for a completed swap (requires authentication).
 

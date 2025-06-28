@@ -4,12 +4,30 @@ A production-ready Node.js backend service that manages Bitcoin Hash Time-Locked
 
 ## Features
 
-- **Bitcoin HTLC Generation**: Create time-locked Bitcoin scripts with multisig and fallback conditions
+- **Bitcoin HTLC Generation**: Create time-locked Bitcoin scripts with P2WSH (SegWit) addresses
 - **Secure Preimage Management**: Cryptographically secure preimage generation with SHA256 hashing
+- **Network-Aware Security**: Conditional preimage exposure based on Bitcoin network (regtest/testnet vs mainnet)
+- **Market Maker Integration**: Dedicated hash endpoint for transaction signing preparation
 - **AWS Integration**: Store sensitive data securely using AWS Secrets Manager
-- **RESTful API**: Clean, well-documented API endpoints for frontend integration
+- **RESTful API**: Clean, well-documented API endpoints with comprehensive validation
+- **Interactive Testing**: Step-by-step integration test with user prompts
 - **Enterprise Security**: Rate limiting, input validation, and comprehensive error handling
 - **Chainlink Functions Ready**: Designed for future Chainlink DON integration
+
+## Recent Improvements ✨
+
+### 🔐 Security Enhancement
+- **Network-Based Preimage Control**: Preimage only exposed in regtest/testnet, never in mainnet
+- **Production-Safe Defaults**: Secure configuration for production deployments
+
+### 🛠️ Developer Experience  
+- **Interactive Integration Test**: Step-by-step testing with user prompts for easy debugging
+- **Hash Signing Endpoint**: New `/swap/{id}/hash` endpoint for market makers
+- **Comprehensive Documentation**: Updated API examples and HTLC flow documentation
+
+### 🧹 Code Quality
+- **Cleanup**: Removed duplicate code and improved organization
+- **P2WSH Support**: Updated to use SegWit addresses for better efficiency
 
 ## Architecture
 
