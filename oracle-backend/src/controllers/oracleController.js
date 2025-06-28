@@ -5,16 +5,13 @@ const router = express.Router();
 const bitcoinService = require('../services/bitcoinService');
 const preimageService = require('../services/preimageService');
 const awsSecretsService = require('../services/awsSecretsService');
-const MMServerService = require('../services/mmServerService');
-const BitcoinMonitoringService = require('../services/bitcoinMonitoringService');
-const chainlinkFunctionsService = require('../services/chainlinkFunctionsService');
-const cowOrderTracker = require('../services/cowOrderTracker');
+// const BitcoinMonitoringService = require('../services/bitcoinMonitoringService');
+
 const logger = require('../utils/logger');
 const { validateRequest } = require('../middleware/validation');
 
 // Initialize services
-const mmServerService = new MMServerService();
-const bitcoinMonitoringService = new BitcoinMonitoringService();
+// const bitcoinMonitoringService = new BitcoinMonitoringService();
 
 /**
  * Validation rules for creating a new preimage
@@ -183,66 +180,64 @@ router.post('/create-preimage', createPreimageValidation, validateRequest, async
   }
 });
 
-
 /**
- * @route GET /api/oracle/swap/:swapId/hash
- * @desc Get the hash that the market maker needs to sign for HTLC spending
+ * @route GET /api/oracle/swap/:swapId
+ * @desc Get swap details by ID (without preimage)
  * @access Public
  */
-router.get('/swap/:swapId/hash', [
-  param('swapId')
-    .isUUID(4)
-    .withMessage('Invalid swap ID format')
-], validateRequest, async (req, res) => {
-  try {
-    const { swapId } = req.params;
-    
-    logger.info('Retrieving hash for MM signature', { swapId });
+router.get('/swap/:swapId', 
+  param('swapId').isUUID().withMessage('Invalid swap ID format'),
+  validateRequest,
+  async (req, res) => {
+    try {
+      const { swapId } = req.params;
 
-    // Retrieve swap details from AWS Secrets Manager
-    const swapMetadata = await awsSecretsService.getSwapSecret(swapId);
-    
-    if (!swapMetadata) {
-      return res.status(404).json({
-        success: false,
-        error: 'Swap not found'
-      });
-    }
+      logger.info('Retrieving swap details', { swapId });
 
-    // Check if swap is still active
-    if (new Date() > new Date(swapMetadata.expiresAt)) {
-      return res.status(410).json({
-        success: false,
-        error: 'Swap has expired'
-      });
-    }
-
-    // Return hash and relevant signing information
-    const response = {
-      success: true,
-      data: {
-        swapId,
-        hash: swapMetadata.hash,
-        htlcScript: swapMetadata.htlcScript,
-        htlcAddress: swapMetadata.htlcAddress,
-        btcAmount: swapMetadata.btcAmount,
-        timelock: swapMetadata.timelock,
-        expiresAt: swapMetadata.expiresAt,
-        status: swapMetadata.status
+      const swapData = await awsSecretsService.getSwapSecret(swapId);
+      
+      if (!swapData) {
+        return res.status(404).json({
+          success: false,
+          error: 'Swap not found'
+        });
       }
-    };
 
-    logger.info('Successfully retrieved hash for MM signature', { swapId });
-    res.status(200).json(response);
+      // Return swap details without preimage
+      const response = {
+        success: true,
+        data: {
+          swapId: swapData.swapId,
+          hash: swapData.hash,
+          userBtcAddress: swapData.userBtcAddress,
+          userEthWallet: swapData.userEthWallet,
+          mmPubkey: swapData.mmPubkey,
+          btcAmount: swapData.btcAmount,
+          targetToken: swapData.targetToken,
+          timelock: swapData.timelock,
+          htlcScript: swapData.htlcScript,
+          htlcAddress: swapData.htlcAddress,
+          createdAt: swapData.createdAt,
+          expiresAt: swapData.expiresAt,
+          status: swapData.status,
+          btcTxHash: swapData.btcTxHash,
+          cowOrderUid: swapData.cowOrderUid,
+          cowOrderStatus: swapData.cowOrderStatus
+        }
+      };
 
-  } catch (error) {
-    logger.error('Error retrieving hash for MM signature:', error);
-    res.status(500).json({
-      success: false,
-      error: 'Internal server error'
-    });
+      res.json(response);
+
+    } catch (error) {
+      logger.error('Error retrieving swap:', error);
+      res.status(500).json({
+        success: false,
+        error: 'Internal server error'
+      });
+    }
   }
-});
+);
+
 
 
 module.exports = router;

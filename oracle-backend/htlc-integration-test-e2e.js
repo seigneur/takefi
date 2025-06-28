@@ -1,4 +1,3 @@
-const BitcoinWalletManager = require('./bitcoin-wallet-simple');
 const BitcoinRPCClient = require('./bitcoin-rpc');
 const axios = require('axios');
 const readline = require('readline');
@@ -7,7 +6,6 @@ const ORACLE_BASE_URL = 'http://localhost:3001';
 
 class HTLCIntegrationTest {
     constructor() {
-        this.walletManager = new BitcoinWalletManager();
         this.rpcClient = new BitcoinRPCClient();
         this.rl = readline.createInterface({
             input: process.stdin,
@@ -128,6 +126,14 @@ class HTLCIntegrationTest {
             } else {
                 console.log('Failed to check HTLC balance:', htlcBalanceResult.error);
             }
+
+            // here create a console.log with information to call autoRedeemHTLC
+            console.log(`\nTo redeem the HTLC, call autoRedeemHTLC with the following parameters:`);
+            console.log(`  - HTLC Script: ${oracleResponse.data.htlcScript}`);
+            console.log(`  - Preimage: ${oracleResponse.data.preimage}`);
+            console.log(`  - HTLC Address: ${oracleResponse.data.htlcAddress}`);
+            console.log(`  - Output Address: ${mmWallet.address}`); // Use MM wallet address as output
+            
 
             // Step 6: Create a transaction to spend the HTLC
             console.log('\nStep 6: Creating spending transaction...');
