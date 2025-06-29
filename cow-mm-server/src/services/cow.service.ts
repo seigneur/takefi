@@ -26,6 +26,7 @@ import {
 } from "../models";
 import { config } from "../config/app.config";
 import { createAppError } from "../middleware/errorHandler";
+import { getRpcUrl } from "../config/network.config";
 
 export class CoWService {
   private orderBookApi: OrderBookApi;
@@ -38,7 +39,7 @@ export class CoWService {
     });
 
     // Initialize provider based on chain
-    const rpcUrl = this.getRpcUrl(config.cow.chainId);
+    const rpcUrl = getRpcUrl(config.cow.chainId);
     this.provider = new ethers.providers.JsonRpcProvider(rpcUrl);
 
     // Initialize signer for MM wallet
@@ -51,21 +52,6 @@ export class CoWService {
     );
   }
 
-  private getRpcUrl(chainId: number): string {
-    switch (chainId) {
-      case 1:
-        return process.env.ETHEREUM_RPC_URL || "https://cloudflare-eth.com";
-      case 100:
-        return process.env.GNOSIS_RPC_URL || "https://rpc.gnosischain.com";
-      case 11155111:
-        return (
-          process.env.SEPOLIA_RPC_URL ||
-          "https://sepolia.infura.io/v3/5ce176a66fac47848ebce0ae3a817bd6"
-        );
-      default:
-        throw new Error(`Unsupported chain ID: ${chainId}`);
-    }
-  }
 
   async getQuote(request: CoWQuoteRequestDto): Promise<Quote> {
     try {

@@ -1,6 +1,7 @@
 import dotenv from 'dotenv';
 import { ethers } from 'ethers';
 import { CoWConfigDto, SafeConfigDto, ServerConfigDto, WalletConfigDto } from '../models';
+import { getCowApiUrl, getCurrentNetworkConfig, SUPPORTED_CHAIN_IDS } from './network.config';
 
 dotenv.config();
 
@@ -61,9 +62,9 @@ function validateConfig(): void {
   }
 
   // Validate chain ID
-  const chainId = parseInt(process.env.CHAIN_ID || '1');
-  if (![1, 100, 11155111].includes(chainId)) {
-    errors.push('CHAIN_ID must be 1 (Mainnet), 100 (Gnosis), or 11155111 (Sepolia)');
+  const chainId = parseInt(process.env.CHAIN_ID || '11155111');
+  if (!SUPPORTED_CHAIN_IDS.includes(chainId as any)) {
+    errors.push(`CHAIN_ID must be one of: ${SUPPORTED_CHAIN_IDS.join(', ')} (Mainnet, Gnosis, Sepolia)`);
   }
 
   // Validate API key strength
@@ -120,10 +121,10 @@ export const serverConfig: ServerConfigDto = {
 };
 
 export const cowConfig: CoWConfigDto = {
-  apiUrl: process.env.COW_API_URL || 'https://api.cow.fi/mainnet/api/v1',
-  settlementContract: process.env.COW_SETTLEMENT_CONTRACT || '0x9008D19f58AAbD9eD0D60971565AA8510560ab41',
-  vaultRelayer: process.env.COW_VAULT_RELAYER || '0xC92E8bdf79f0507f65a392b0ab4667716BFE0110',
-  chainId: parseInt(process.env.CHAIN_ID || '1'),
+  apiUrl: getCowApiUrl(parseInt(process.env.CHAIN_ID || '11155111')),
+  settlementContract: process.env.COW_SETTLEMENT_CONTRACT || getCurrentNetworkConfig().cowSettlementContract,
+  vaultRelayer: process.env.COW_VAULT_RELAYER || getCurrentNetworkConfig().cowVaultRelayer,
+  chainId: parseInt(process.env.CHAIN_ID || '11155111'),
   defaultValidityPeriod: parseInt(process.env.DEFAULT_VALIDITY_PERIOD || '1800'), // 30 minutes
   defaultSlippage: parseFloat(process.env.DEFAULT_SLIPPAGE || '0.5') // 0.5%
 };
@@ -132,7 +133,7 @@ export const safeConfig: SafeConfigDto = {
   address: process.env.SAFE_WALLET_ADDRESS || '',
   executorPrivateKey: process.env.EXECUTOR_PRIVATE_KEY || '',
   threshold: parseInt(process.env.SAFE_THRESHOLD || '1'),
-  chainId: parseInt(process.env.CHAIN_ID || '1')
+  chainId: parseInt(process.env.CHAIN_ID || '11155111')
 };
 
 export const walletConfig: WalletConfigDto = {

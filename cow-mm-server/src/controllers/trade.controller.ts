@@ -1,8 +1,8 @@
-import { Request, Response, NextFunction } from 'express';
-import { ethers } from 'ethers';
-import { 
-  TradeRequestDto, 
-  TradeResponseDto, 
+import { Request, Response, NextFunction } from "express";
+import { ethers } from "ethers";
+import {
+  TradeRequestDto,
+  TradeResponseDto,
   OrderStatusResponseDto,
   QuoteDto,
   OrderKind,
@@ -10,13 +10,13 @@ import {
   SellTokenSource,
   BuyTokenDestination,
   ERROR_CODES,
-  Quote
-} from '../models';
-import { CoWService } from '../services/cow.service';
-import { SafeService } from '../services/safe.service';
-import { validateTradeRequest, validateOrderUid } from '../utils/validators';
-import { createAppError } from '../middleware/errorHandler';
-import { config } from '../config/app.config';
+  Quote,
+} from "../models";
+import { CoWService } from "../services/cow.service";
+import { SafeService } from "../services/safe.service";
+import { validateTradeRequest, validateOrderUid } from "../utils/validators";
+import { createAppError } from "../middleware/errorHandler";
+import { config } from "../config/app.config";
 
 export class TradeController {
   private cowService: CoWService;
@@ -39,7 +39,7 @@ export class TradeController {
    *       - Gets a quote from CoW Protocol
    *       - Signs the order with the MM wallet
    *       - Submits the order to CoW Protocol
-   *       
+   *
    *       The order will be executed by CoW Protocol solvers when optimal conditions are met.
    *     tags:
    *       - Trading
@@ -106,7 +106,11 @@ export class TradeController {
    *             schema:
    *               $ref: '#/components/schemas/ErrorResponse'
    */
-  async executeTrade(req: Request, res: Response, next: NextFunction): Promise<void> {
+  async executeTrade(
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> {
     try {
       const tradeRequest: TradeRequestDto = req.body;
 
@@ -114,17 +118,18 @@ export class TradeController {
       const validationErrors = validateTradeRequest(tradeRequest);
       if (validationErrors.length > 0) {
         throw createAppError(
-          'Invalid trade request',
+          "Invalid trade request",
           400,
           ERROR_CODES.INVALID_TOKEN_ADDRESS,
           validationErrors
         );
       }
 
-      console.log('Processing trade request:', tradeRequest);
+      console.log("Processing trade request:", tradeRequest);
 
       // Calculate validity period
-      const validitySeconds = tradeRequest.validitySeconds || config.cow.defaultValidityPeriod;
+      const validitySeconds =
+        tradeRequest.validitySeconds || config.cow.defaultValidityPeriod;
       const validTo = Math.floor(Date.now() / 1000) + validitySeconds;
 
       // Get quote from CoW Protocol
@@ -135,52 +140,67 @@ export class TradeController {
         from: config.wallet.mmWalletAddress,
         receiver: tradeRequest.userWallet, // Direct to user wallet
         kind: OrderKind.SELL,
-        partiallyFillable: false,
+        partiallyFillable: true,
         sellTokenBalance: SellTokenSource.ERC20,
         buyTokenBalance: BuyTokenDestination.ERC20,
         signingScheme: SigningScheme.EIP712,
         validTo,
-        appData: '0x0000000000000000000000000000000000000000000000000000000000000000'
+        appData:
+          "0x0000000000000000000000000000000000000000000000000000000000000000",
       });
 
-      console.log('Quote received:', {
+      console.log("Quote received:", {
         sellAmount: quote.sellAmount,
         buyAmount: quote.buyAmount,
-        feeAmount: quote.feeAmount
+        feeAmount: quote.feeAmount,
       });
 
       // 🚀 AUTO-APPROVAL: Ensure sell token is approved before trading
-      console.log('🔍 Ensuring sell token approval for trading...');
-      const totalSellAmount = ethers.BigNumber.from(quote.sellAmount).add(quote.feeAmount).toString();
-      
+      console.log("🔍 Ensuring sell token approval for trading...");
+      const totalSellAmount = ethers.BigNumber.from(quote.sellAmount)
+        .add(quote.feeAmount)
+        .toString();
+
       // Check token balance first (optional but good for diagnostics)
-      const tokenBalance = await this.cowService.getTokenBalance(quote.sellToken, config.wallet.mmWalletAddress);
-      console.log(`💰 MM wallet balance for ${quote.sellToken}: ${ethers.utils.formatUnits(tokenBalance, 18)} tokens`);
-      
+      const tokenBalance = await this.cowService.getTokenBalance(
+        quote.sellToken,
+        config.wallet.mmWalletAddress
+      );
+      console.log(
+        `💰 MM wallet balance for ${
+          quote.sellToken
+        }: ${ethers.utils.formatUnits(tokenBalance, 18)} tokens`
+      );
+
       // Ensure sufficient approval for the trade
-      await this.cowService.ensureTokenApproval(quote.sellToken, totalSellAmount);
-      console.log('✅ Token approval confirmed - proceeding with trade execution');
+      await this.cowService.ensureTokenApproval(
+        quote.sellToken,
+        totalSellAmount
+      );
+      console.log(
+        "✅ Token approval confirmed - proceeding with trade execution"
+      );
 
       let orderUid: string;
 
       // Check if using Safe wallet for MM
-      if (config.safe.address && config.safe.address !== '') {
-        console.log('Using Safe wallet - creating pre-signed order');
-        
+      if (config.safe.address && config.safe.address !== "") {
+        console.log("Using Safe wallet - creating pre-signed order");
+
         // Create pre-signed order for Safe wallet
         orderUid = await this.createSafePreSignedOrder(quote);
       } else {
-        console.log('Using regular wallet - signing order with private key');
-        
+        console.log("Using regular wallet - signing order with private key");
+
         // Sign the order with regular wallet
         const signedOrder = await this.cowService.signOrder(quote);
-        console.log('Order signed successfully');
+        console.log("Order signed successfully");
 
         // Submit order to CoW Protocol
         orderUid = await this.cowService.submitOrder(signedOrder);
       }
 
-      console.log('Order submitted with UID:', orderUid);
+      console.log("Order submitted with UID:", orderUid);
 
       // Format response
       const quoteResponse: QuoteDto = {
@@ -190,8 +210,8 @@ export class TradeController {
         buyAmount: quote.buyAmount,
         feeAmount: quote.feeAmount,
         validTo: quote.validTo,
-        priceImpact: '0.0', // TODO: Calculate actual price impact
-        expiresAt: new Date(quote.validTo * 1000).toISOString()
+        priceImpact: "0.0", // TODO: Calculate actual price impact
+        expiresAt: new Date(quote.validTo * 1000).toISOString(),
       };
 
       const response: TradeResponseDto = {
@@ -199,7 +219,7 @@ export class TradeController {
         orderUid,
         quote: quoteResponse,
         estimatedExecutionTime: 300, // 5 minutes estimated
-        message: 'Order submitted successfully'
+        message: "Order submitted successfully",
       };
 
       res.json(response);
@@ -228,28 +248,30 @@ export class TradeController {
         sellTokenBalance: quote.sellTokenBalance,
         buyTokenBalance: quote.buyTokenBalance,
         signingScheme: SigningScheme.PRESIGN,
-        signature: '0x', // Empty signature for pre-signed orders
+        signature: "0x", // Empty signature for pre-signed orders
         from: config.safe.address, // Use Safe wallet address as the from address
-        receiver: quote.receiver
+        receiver: quote.receiver,
       };
 
-      console.log('Submitting pre-signed order to CoW API...');
-      
+      console.log("Submitting pre-signed order to CoW API...");
+
       // Submit to CoW API first to get orderUid
       const orderUid = await this.cowService.submitOrder(preSignedOrder);
-      
-      console.log(`Order submitted to CoW API with UID: ${orderUid}, now setting pre-signature...`);
-      
+
+      console.log(
+        `Order submitted to CoW API with UID: ${orderUid}, now setting pre-signature...`
+      );
+
       // Then set pre-signature on settlement contract
       await this.safeService.setPreSignature(orderUid, true);
-      
+
       console.log(`Pre-signature set successfully for order: ${orderUid}`);
-      
+
       return orderUid;
     } catch (error) {
-      console.error('Failed to create Safe pre-signed order:', error);
+      console.error("Failed to create Safe pre-signed order:", error);
       throw createAppError(
-        'Failed to create pre-signed order for Safe wallet',
+        "Failed to create pre-signed order for Safe wallet",
         500,
         ERROR_CODES.SAFE_TRANSACTION_FAILED,
         error
@@ -264,7 +286,7 @@ export class TradeController {
    *     summary: Get the status of an order
    *     description: |
    *       Retrieves the current status and execution details of an order from CoW Protocol.
-   *       
+   *
    *       Order statuses:
    *       - `pending`: Order is being processed
    *       - `open`: Order is live and waiting for execution
@@ -311,24 +333,28 @@ export class TradeController {
    *             schema:
    *               $ref: '#/components/schemas/ErrorResponse'
    */
-  async getOrderStatus(req: Request, res: Response, next: NextFunction): Promise<void> {
+  async getOrderStatus(
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> {
     try {
       const { orderUid } = req.params;
 
       // Validate order UID format
       if (!validateOrderUid(orderUid)) {
         throw createAppError(
-          'Invalid order UID format',
+          "Invalid order UID format",
           400,
           ERROR_CODES.INVALID_TOKEN_ADDRESS
         );
       }
 
-      console.log('Getting order status for:', orderUid);
+      console.log("Getting order status for:", orderUid);
 
       // Get order details from CoW Protocol
       const order = await this.cowService.getOrderStatus(orderUid);
-      
+
       // Get trades for this order
       const trades = await this.cowService.getTrades(orderUid);
 
@@ -346,14 +372,14 @@ export class TradeController {
         creationDate: order.creationDate,
         executionDate: order.txHash ? new Date().toISOString() : undefined,
         txHash: order.txHash,
-        trades: trades.map(trade => ({
+        trades: trades.map((trade) => ({
           blockNumber: trade.blockNumber,
           sellAmount: trade.sellAmount,
           buyAmount: trade.buyAmount,
           feeAmount: trade.feeAmount,
-          txHash: trade.txHash || '',
-          timestamp: trade.timestamp
-        }))
+          txHash: trade.txHash || "",
+          timestamp: trade.timestamp,
+        })),
       };
 
       res.json(response);
@@ -370,7 +396,7 @@ export class TradeController {
    *     description: |
    *       Retrieves a real-time price quote from CoW Protocol for the specified token swap.
    *       This endpoint provides pricing information without executing a trade.
-   *       
+   *
    *       The quote includes:
    *       - Exact sell and buy amounts
    *       - CoW Protocol fees
@@ -433,22 +459,32 @@ export class TradeController {
    *             schema:
    *               $ref: '#/components/schemas/ErrorResponse'
    */
-  async getQuote(req: Request, res: Response, next: NextFunction): Promise<void> {
+  async getQuote(
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> {
     try {
       const { sellToken, buyToken, sellAmount, userWallet } = req.query;
 
       // Basic validation
       if (!sellToken || !buyToken || !sellAmount || !userWallet) {
         throw createAppError(
-          'Missing required parameters: sellToken, buyToken, sellAmount, userWallet',
+          "Missing required parameters: sellToken, buyToken, sellAmount, userWallet",
           400,
           ERROR_CODES.INVALID_TOKEN_ADDRESS
         );
       }
 
-      console.log('Getting quote for:', { sellToken, buyToken, sellAmount, userWallet });
+      console.log("Getting quote for:", {
+        sellToken,
+        buyToken,
+        sellAmount,
+        userWallet,
+      });
 
-      const validTo = Math.floor(Date.now() / 1000) + config.cow.defaultValidityPeriod;
+      const validTo =
+        Math.floor(Date.now() / 1000) + config.cow.defaultValidityPeriod;
 
       // Get quote from CoW Protocol
       const quote = await this.cowService.getQuote({
@@ -458,11 +494,11 @@ export class TradeController {
         from: config.wallet.mmWalletAddress,
         receiver: userWallet as string,
         kind: OrderKind.SELL,
-        partiallyFillable: false,
+        partiallyFillable: true,
         sellTokenBalance: SellTokenSource.ERC20,
         buyTokenBalance: BuyTokenDestination.ERC20,
         signingScheme: SigningScheme.EIP712,
-        validTo
+        validTo,
       });
 
       // Format response
@@ -473,8 +509,8 @@ export class TradeController {
         buyAmount: quote.buyAmount,
         feeAmount: quote.feeAmount,
         validTo: quote.validTo,
-        priceImpact: '0.0', // TODO: Calculate actual price impact
-        expiresAt: new Date(quote.validTo * 1000).toISOString()
+        priceImpact: "0.0", // TODO: Calculate actual price impact
+        expiresAt: new Date(quote.validTo * 1000).toISOString(),
       };
 
       res.json(response);
@@ -491,10 +527,10 @@ export class TradeController {
    *     description: |
    *       Cancels an open order on CoW Protocol. This operation is only possible for orders
    *       that are still open (not yet filled, expired, or already cancelled).
-   *       
+   *
    *       For regular wallet orders: Creates an off-chain cancellation signature
    *       For Safe wallet orders: Sets the pre-signature to false on the settlement contract
-   *       
+   *
    *       **Note**: Once cancelled, an order cannot be restored.
    *     tags:
    *       - Trading
@@ -549,19 +585,23 @@ export class TradeController {
    *             schema:
    *               $ref: '#/components/schemas/ErrorResponse'
    */
-  async cancelOrder(req: Request, res: Response, next: NextFunction): Promise<void> {
+  async cancelOrder(
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> {
     try {
       const { orderUid } = req.params;
 
       if (!validateOrderUid(orderUid)) {
         throw createAppError(
-          'Invalid order UID format',
+          "Invalid order UID format",
           400,
           ERROR_CODES.INVALID_TOKEN_ADDRESS
         );
       }
 
-      console.log('Cancelling order:', orderUid);
+      console.log("Cancelling order:", orderUid);
 
       // For pre-signed orders (Safe wallet), cancel via Safe service
       const txHash = await this.safeService.cancelPreSignedOrder(orderUid);
@@ -570,7 +610,7 @@ export class TradeController {
         success: true,
         orderUid,
         cancellationTxHash: txHash,
-        message: 'Order cancelled successfully'
+        message: "Order cancelled successfully",
       });
     } catch (error) {
       next(error);

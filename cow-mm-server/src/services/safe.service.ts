@@ -2,6 +2,7 @@ import { ethers } from "ethers";
 import { config } from "../config/app.config";
 import { createAppError, AppError } from "../middleware/errorHandler";
 import { ERROR_CODES, SafeTransaction, SigningScheme } from "../models";
+import { getRpcUrl } from "../config/network.config";
 
 export class SafeService {
   private provider: ethers.providers.JsonRpcProvider;
@@ -10,7 +11,7 @@ export class SafeService {
 
   constructor() {
     // Initialize provider
-    const rpcUrl = this.getRpcUrl(config.cow.chainId);
+    const rpcUrl = getRpcUrl(config.cow.chainId);
     this.provider = new ethers.providers.JsonRpcProvider(rpcUrl);
 
     // Initialize executor signer
@@ -33,21 +34,6 @@ export class SafeService {
     );
   }
 
-  private getRpcUrl(chainId: number): string {
-    switch (chainId) {
-      case 1:
-        return process.env.ETHEREUM_RPC_URL || "https://cloudflare-eth.com";
-      case 100:
-        return process.env.GNOSIS_RPC_URL || "https://rpc.gnosischain.com";
-      case 11155111:
-        return (
-          process.env.SEPOLIA_RPC_URL ||
-          "https://sepolia.infura.io/v3/YOUR_INFURA_KEY"
-        );
-      default:
-        throw new Error(`Unsupported chain ID: ${chainId}`);
-    }
-  }
 
   async setPreSignature(
     orderUid: string,
