@@ -2,12 +2,12 @@ const fs = require("fs")
 const { Location, ReturnType, CodeLanguage } = require("@chainlink/functions-toolkit")
 
 const requestConfig = {
-  source: fs.readFileSync("../cow-mm-server/src/preimage-retrieval.js").toString(),
+  source: fs.readFileSync("../cow-mm-server/preimage-retrieval.js").toString(),
   codeLocation: Location.Inline,
   secrets: { 
     AWS_ACCESS_KEY_ID: process.env.AWS_ACCESS_KEY_ID ?? "", 
     AWS_SECRET_ACCESS_KEY: process.env.AWS_SECRET_ACCESS_KEY ?? "",
-    RPC_URL: process.env.ETHEREUM_SEPOLIA_RPC_URL ?? "" 
+    RPC_URL: process.env.AVALANCHE_RPC_URL ?? "" 
   },
   secretsLocation: Location.DONHosted,
   args: [

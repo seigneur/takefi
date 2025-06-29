@@ -280,54 +280,6 @@ router.get(
 );
 
 /**
- * @route GET /api/oracle/swap/:swapId/preimage
- * @desc Retrieve preimage for a swap by ID
- * @query ethTxHash Ethereum transaction hash to verify preimage
- * @access Protected (with rate limiting)
- */
-router.get(
-  "/swap/:swapId/preimage",
-  param("swapId").isUUID().withMessage("Invalid swap ID format"),
-  validateRequest,
-  async (req, res) => {
-    try {
-      const { swapId } = req.params;
-      const { ethTxHash } = req.query;
-
-      logger.info("Retrieving preimage for swap", { swapId });
-
-      const secretPrefix = process.env.AWS_SECRETS_PREFIX || "btc-oracle/";
-      const swapARN = `arn:aws:secretsmanager:${process.env.AWS_REGION}:${process.env.AWS_ACCOUNT_ID}:secret:${secretPrefix}${swapId}`;
-      const response =
-        await chainlinkFunctionsService.createRequestAndReadResult(
-          swapARN,
-          ethTxHash
-        );
-
-      if (!response || response == "0x") {
-        return res.status(404).json({
-          success: false,
-          error: "Preimage not found for this swap",
-        });
-      }
-
-      return res.json({
-        success: true,
-        data: {
-          preimage: response,
-        },
-      });
-    } catch (error) {
-      logger.error("Error retrieving preimage:", error);
-      res.status(500).json({
-        success: false,
-        error: "Internal server error",
-      });
-    }
-  }
-);
-
-/**
  * @route POST /api/oracle/trigger-swap/:swapId
  * @desc Trigger a swap execution when Bitcoin payment is confirmed
  * @access Private (called by monitoring service)
