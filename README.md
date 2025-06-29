@@ -2,10 +2,27 @@
 
 ## Overview
 
-This project implements a trustless cross-chain swap mechanism that allows users to exchange Bitcoin (BTC) for Real-World Asset (RWA) tokens on Ethereum while keeping their BTC native on the Bitcoin blockchain. The system uses Hash Time-Locked Contracts (HTLCs), Chainlink oracles, and market maker liquidity to create secure, atomic swaps without requiring wrapped tokens or custodial solutions.
+This project implements a trustless cross-chain swap mechanism that allows users to exchange Bitcoin (BTC) for Real-World Asset (RWA) tokens on Avalanche while keeping their BTC native on the Bitcoin blockchain. The system uses Hash Time-Locked Contracts (HTLCs), Chainlink oracles, and market maker liquidity to create secure, atomic swaps without requiring wrapped tokens or custodial solutions.
+
+We utilized existing RWA tokens on Avalanche using backed.fi assets. This project shows how we can leverage HTLC's to bring liquidity from Bitcoin to Avalanche without the need for wrapped tokens, thus avoiding minting and burning fees.
 
 ## Sponsors used - 
-Chainlink Functions, Avalanche, AWS, 
+#### Chainlink Functions
+We were able to use chainlink function as the glue to make this cross chain RWA swap possible.
+
+https://functions.chain.link/avalanche/38
+Relevant Files - 
+cow-mm-server/preimage-retrieval.js
+cow-mm-server/getPreimageAndRedeem.js
+chainlink-functions/contracts/FunctionsConsumer.sol
+
+#### Avalanche
+https://snowtrace.io/tx/0x1305b509274ab13e948baeb74e5f2391e8575c4fcc948a63012bbeecc0955fdf
+https://snowtrace.io/address/0x810a52Bbd315C5B493fdd417b3f8b36e23226324 --> Contract deployed on Avalanche for functions consumer
+
+#### AWS
+We utilized AWS Secrets Manager to securely store and manage sensitive data such as preimages used in the HTLCs.
+oracle-backend/src/controllers/oracleController.js
 
 ## Architecture
 
@@ -13,31 +30,9 @@ Chainlink Functions, Avalanche, AWS,
 https://bitcoin-rpc.publicnode.com
 
 ## Swap Flow
+The swap flow can be illustrated as follows:
 
-```mermaid
-sequenceDiagram
-    participant U as User
-    participant O as Oracle
-    participant MM as Market Maker
-    participant BTC as Bitcoin Network
-    participant ETH as Ethereum Network
-
-    U->>O: Request swap quote
-    O->>MM: Get liquidity offers
-    MM->>O: Return swap rates
-    O->>U: Display available offers
-    
-    U->>O: Confirm swap selection
-    O->>O: Generate secure preimage
-    O->>BTC: Create HTLC script
-    U->>BTC: Lock BTC in HTLC
-    
-    O->>ETH: Verify BTC lock
-    O->>ETH: Release RWA tokens to user
-    O->>MM: Provide preimage
-    MM->>BTC: Claim BTC using preimage
-```
-
+![Takefi Swap Flow Architecture](image.png)
 
 The system consists of three main actors working together:
 
