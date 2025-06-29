@@ -9,6 +9,7 @@
     "start": "next start"
   },
   "dependencies": {
+    "@cowprotocol/app-data": "^3.1.0",
     "@emotion/is-prop-valid": "latest",
     "@hookform/resolvers": "^3.9.1",
     "@okxweb3/coin-bitcoin": "^1.2.1",

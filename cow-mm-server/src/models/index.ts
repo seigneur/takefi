@@ -35,6 +35,7 @@ export interface Quote {
   feeAmount: string;
   validTo: number;
   appData: string;
+  appDataHash?: string;
   partiallyFillable: boolean;
   sellTokenBalance: SellTokenSource;
   buyTokenBalance: BuyTokenDestination;
@@ -42,6 +43,7 @@ export interface Quote {
   receiver: string;
   kind: OrderKind;
   id?: number;
+  quoteId?: number;
 }
 
 export interface Trade {
@@ -195,15 +197,17 @@ export interface CoWQuoteRequestDto {
   signingScheme: SigningScheme;
   validTo?: number;
   appData?: string;
+  appDataHash?: string;
+  priceQuality?: string;
 }
 
 export interface SignedOrderDto {
   sellToken: string;
   buyToken: string;
+  receiver: string;
   sellAmount: string;
   buyAmount: string;
   validTo: number;
-  appData: string;
   feeAmount: string;
   kind: OrderKind;
   partiallyFillable: boolean;
@@ -212,7 +216,9 @@ export interface SignedOrderDto {
   signingScheme: SigningScheme;
   signature: string;
   from: string;
-  receiver: string;
+  quoteId?: number;
+  appData: string;
+  appDataHash: string;
 }
 
 export interface PreSignatureRequestDto {

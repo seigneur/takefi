@@ -50,7 +50,12 @@ import {
 
 const swapSteps = [
   { id: 1, name: "Offer Confirmed", status: "pending", icon: CheckCircle },
-  { id: 2, name: "Bitcoin Script Created", status: "pending", icon: Bitcoin },
+  {
+    id: 2,
+    name: "HTLC Script and Pre-image Created",
+    status: "pending",
+    icon: Bitcoin,
+  },
   { id: 3, name: "BTC Payment Received", status: "pending", icon: Wallet },
   { id: 4, name: "Order Submitted to CoW", status: "pending", icon: Globe },
   { id: 5, name: "Tokens Delivered", status: "pending", icon: TrendingUp },
@@ -82,7 +87,7 @@ const chainlinkService = {
       setTimeout(() => {
         resolve({
           BTC: { price: 43250, lastUpdated: new Date() },
-          COW: { price: 0.25, lastUpdated: new Date() },
+          bCSPX: { price: 0.25, lastUpdated: new Date() },
         });
       }, 500);
     });
@@ -131,11 +136,11 @@ export default function Component() {
 
   // Prices
   const [btcPrice, setBtcPrice] = useState(0);
-  const [cowPrice, setCowPrice] = useState(0);
+  const [bcspxPrice, setBcspxPrice] = useState(0);
   const [priceLoading, setPriceLoading] = useState(true);
   const [lastPriceUpdate, setLastPriceUpdate] = useState(new Date());
   const [btcPriceData, setBtcPriceData] = useState(null);
-  const [cowPriceData, setCowPriceData] = useState(null);
+  const [bcspxPriceData, setBcspxPriceData] = useState(null);
   const [networkStatus, setNetworkStatus] = useState({
     blockNumber: 0,
     gasPrice: "0",
@@ -148,35 +153,35 @@ export default function Component() {
 
       // Extract price values and check for staleness
       const btcData = pricesData.BTC;
-      const cowData = pricesData.COW;
+      const bcspxData = pricesData.bCSPX;
 
       if (btcData) {
         setBtcPrice(btcData.price);
         setBtcPriceData(btcData);
       }
 
-      if (cowData) {
-        setCowPrice(cowData.price);
-        setCowPriceData(cowData);
+      if (bcspxData) {
+        setBcspxPrice(bcspxData.price);
+        setBcspxPriceData(bcspxData);
       }
 
       setLastPriceUpdate(new Date());
 
       // Update offers with new prices
-      if (btcData && cowData) {
-        updateOffersWithRealPrices(btcData.price, cowData.price);
+      if (btcData && bcspxData) {
+        updateOffersWithRealPrices(btcData.price, bcspxData.price);
       }
     } catch (error) {
       console.error("Error fetching Chainlink prices:", error);
       // Fallback to demo prices
       setBtcPrice(43250);
-      setCowPrice(0.25);
+      setBcspxPrice(0.25);
     } finally {
       setPriceLoading(false);
     }
   };
 
-  const updateOffersWithRealPrices = (btcPrice: number, cowPrice: number) => {
+  const updateOffersWithRealPrices = (btcPrice: number, bcspxPrice: number) => {
     // This function is kept for backward compatibility with Chainlink price updates
     // Real offers are now fetched from the API
   };
@@ -508,7 +513,7 @@ export default function Component() {
               <ChainlinkPriceTicker
                 onPriceUpdate={(pricesData) => {
                   if (pricesData.BTC) setBtcPrice(pricesData.BTC.price);
-                  if (pricesData.COW) setCowPrice(pricesData.COW.price);
+                  if (pricesData.bCSPX) setCowPrice(pricesData.bCSPX.price);
                   setLastPriceUpdate(new Date());
                 }}
               />
@@ -522,13 +527,13 @@ export default function Component() {
                 <Bitcoin className="h-3 w-3 mr-1" />
                 tb1pmj9...79wnn (Test)
               </Badge>
-              <Badge
+              {/* <Badge
                 variant="outline"
                 className="bg-blue-500/20 text-blue-400 border-blue-500/30"
               >
                 <div className="w-2 h-2 bg-blue-400 rounded-full mr-2 animate-pulse" />
                 Testing Mode
-              </Badge>
+              </Badge> */}
               {/* Reown AppKit Connect Button (for future wallet integration) */}
               <w3m-button />
             </div>
@@ -542,7 +547,7 @@ export default function Component() {
           <ChainlinkPriceTicker
             onPriceUpdate={(pricesData) => {
               if (pricesData.BTC) setBtcPrice(pricesData.BTC.price);
-              if (pricesData.COW) setCowPrice(pricesData.COW.price);
+              if (pricesData.bCSPX) setCowPrice(pricesData.bCSPX.price);
               setLastPriceUpdate(new Date());
             }}
           />
@@ -606,7 +611,7 @@ export default function Component() {
                   <div className="space-y-2">
                     <div className="flex justify-between items-center">
                       <label className="text-sm font-medium text-gray-300">
-                        Your Ethereum Address
+                        Your Avalanche Address
                       </label>
                       {userEthAddress && !isValidEthAddress(userEthAddress) && (
                         <span className="text-sm text-red-400">
@@ -623,7 +628,7 @@ export default function Component() {
                       <Wallet className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-purple-500" />
                       <Input
                         type="text"
-                        placeholder="0x1234...5678 (where you'll receive COW tokens)"
+                        placeholder="0x1234...5678 (where you'll receive bCSPX tokens)"
                         value={userEthAddress}
                         onChange={(e) => setUserEthAddress(e.target.value)}
                         className={`pl-12 text-lg h-14 bg-white/5 border-white/20 text-white placeholder:text-gray-400 focus:border-purple-500/50 ${
@@ -639,7 +644,7 @@ export default function Component() {
                     </div>
                     <p className="text-xs text-gray-500">
                       Enter your Ethereum wallet address where you want to
-                      receive the COW tokens
+                      receive the bCSPX tokens
                     </p>
                   </div>
 
@@ -647,7 +652,7 @@ export default function Component() {
                     <div className="flex justify-between text-sm bg-white/5 rounded-lg p-3">
                       <span className="text-gray-400">Exchange Rate:</span>
                       <span className="text-white">
-                        1 BTC = {selectedOffer.rate.toFixed(6)} COW
+                        1 BTC = {selectedOffer.rate.toFixed(6)} bCSPX
                       </span>
                     </div>
                   )}
@@ -702,7 +707,7 @@ export default function Component() {
                               className={`cursor-pointer transition-all duration-200 backdrop-blur-sm ${
                                 offer.isBest
                                   ? "bg-gradient-to-br from-orange-900/80 to-purple-900/80 border-orange-400/70 ring-2 ring-orange-400/50 shadow-lg shadow-orange-500/20"
-                                  : offer.mmName.includes("Demo MM")
+                                  : offer.mmName.includes("Fallback")
                                   ? "bg-gradient-to-br from-slate-800/85 to-purple-900/70 border-purple-400/40 hover:bg-gradient-to-br hover:from-slate-700/90 hover:to-purple-800/80 hover:border-purple-300/50"
                                   : "bg-gradient-to-br from-slate-800/80 to-gray-900/80 border-slate-600/50 hover:bg-gradient-to-br hover:from-slate-700/85 hover:to-gray-800/85 hover:border-slate-500/60"
                               } ${
@@ -749,7 +754,7 @@ export default function Component() {
                                       Rate:
                                     </span>
                                     <span className="text-white font-semibold">
-                                      {offer.rate.toFixed(6)} COW/BTC
+                                      {offer.rate.toFixed(6)} bCSPX/BTC
                                     </span>
                                   </div>
 
@@ -760,12 +765,12 @@ export default function Component() {
                                       </span>
                                       <span className="text-green-300 font-semibold">
                                         {calculateOutput(btcAmount, offer.rate)}{" "}
-                                        COW
+                                        bCSPX
                                       </span>
                                     </div>
                                   )}
 
-                                  {btcAmount && cowPrice > 0 && (
+                                  {btcAmount && bcspxPrice > 0 && (
                                     <div className="flex justify-between items-center">
                                       <span className="text-gray-300 font-medium">
                                         USD Value:
@@ -778,7 +783,7 @@ export default function Component() {
                                               btcAmount,
                                               offer.rate
                                             )
-                                          ) * cowPrice
+                                          ) * bcspxPrice
                                         ).toFixed(2)}
                                       </span>
                                     </div>
@@ -839,7 +844,7 @@ export default function Component() {
                                 selectedOffer.rate
                               )
                             : "0"
-                        } COW`}
+                        } bCSPX`}
                   </Button>
                 </CardContent>
               </Card>
@@ -1069,7 +1074,7 @@ export default function Component() {
                                 parseFloat(
                                   orderTrackingData.executedAmounts.buy
                                 ) / 1e18
-                              ).toFixed(4)} COW`
+                              ).toFixed(4)} bCSPX`
                             : `${
                                 selectedOffer
                                   ? calculateOutput(
@@ -1077,7 +1082,7 @@ export default function Component() {
                                       selectedOffer.rate
                                     )
                                   : "0"
-                              } COW`}
+                              } bCSPX`}
                         </p>
                       </div>
                       <div>
@@ -1159,7 +1164,7 @@ export default function Component() {
                         </Button>
                       </div>
                       <p className="text-xs text-gray-400 mt-2">
-                        Token Symbol: COW • Network: Sepolia Testnet
+                        Token Symbol: bCSPX • Network: Sepolia Testnet
                       </p>
                     </div>
 
@@ -1205,7 +1210,7 @@ export default function Component() {
                     <div>
                       <p className="text-gray-400">You Receive</p>
                       <p className="text-green-400 font-medium text-lg">
-                        {calculateOutput(btcAmount, selectedOffer.rate)} COW
+                        {calculateOutput(btcAmount, selectedOffer.rate)} bCSPX
                       </p>
                     </div>
                   </div>
@@ -1233,7 +1238,7 @@ export default function Component() {
                   <div className="flex justify-between">
                     <span className="text-gray-400">Exchange Rate:</span>
                     <span className="text-white">
-                      {selectedOffer.rate.toFixed(6)} COW/BTC
+                      {selectedOffer.rate.toFixed(6)} bCSPX/BTC
                     </span>
                   </div>
                   <div className="flex justify-between">

@@ -36,8 +36,7 @@ const PRICE_FEED_ABI = [
 export const PRICE_FEEDS = {
   BTC_USD: "0xF4030086522a5bEEa4988F8cA5B36dbC97BeE88c", // BTC/USD
   ETH_USD: "0x5f4eC3Df9cbd43714FE2740f5E3616155c5b8419", // ETH/USD
-  // COW doesn't have a dedicated Chainlink feed, so we'll use a mock price for demo
-  COW_MOCK: "0x0000000000000000000000000000000000000000", // Mock address for COW
+  bCSPX_USD: "0x0000000000000000000000000000000000000000", // Mock address for COW
 } as const;
 
 export interface PriceData {
@@ -50,7 +49,7 @@ export interface PriceData {
 
 export class ChainlinkPriceService {
   private static instance: ChainlinkPriceService;
-  private provider: ethers.JsonRpcProvider;
+  private provider: ethers.providers.JsonRpcProvider;
   private priceCache: Map<string, { data: PriceData; cacheTime: number }> =
     new Map();
   private readonly CACHE_DURATION = 30000; // 30 seconds
@@ -66,18 +65,18 @@ export class ChainlinkPriceService {
     this.provider = this.createProvider();
   }
 
-  private createProvider(): ethers.JsonRpcProvider {
+  private createProvider(): ethers.providers.JsonRpcProvider {
     for (const url of this.RPC_URLS) {
       try {
         if (url.includes("undefined") || url.includes("null")) continue;
-        return new ethers.JsonRpcProvider(url);
+        return new ethers.providers.JsonRpcProvider(url);
       } catch (error) {
         console.warn(`Failed to create provider with URL: ${url}`);
         continue;
       }
     }
     // Fallback to public node
-    return new ethers.JsonRpcProvider("https://ethereum.publicnode.com");
+    return new ethers.providers.JsonRpcProvider("https://ethereum.publicnode.com");
   }
 
   static getInstance(): ChainlinkPriceService {
@@ -198,6 +197,63 @@ export class ChainlinkPriceService {
     }
   }
 
+  async getBCSPXUsdPriceViaCowQuote(): Promise<PriceData | null> {
+    try {
+      // Use your working curl example parameters to get bCSPX price
+      const response = await fetch('https://api.cow.fi/avalanche/api/v1/quote', {
+        method: 'POST',
+        headers: {
+          'accept': 'application/json',
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({
+          "from": "0x0000000000000000000000000000000000000000",
+          "sellToken": "0xB97EF9Ef8734C71904D8002F8b6Bc66Dd9c48a6E", // USDC on Avalanche
+          "buyToken": "0x1e2C4fb7eDE391d116E6B41cD0608260e8801D59", // bCSPX on Avalanche
+          "receiver": "0x0000000000000000000000000000000000000000",
+          "validFor": 1800,
+          "appData": '{"appCode":"CoW Swap","environment":"production","metadata":{"orderClass":{"orderClass":"market"},"quote":{"slippageBips":51,"smartSlippage":true}},"version":"1.4.0"}',
+          "appDataHash": "0xece31e9c84314882f8f18d9975ef6811abccee6df8dede1a16b42504aac94107",
+          "priceQuality": "optimal",
+          "signingScheme": "eip712",
+          "kind": "sell",
+          "sellAmountBeforeFee": "12000000" // 12 USDC (6 decimals)
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error(`CoW API error: ${response.status}`);
+      }
+
+      const data = await response.json();
+      const quote = data.quote;
+
+      if (!quote) {
+        throw new Error("No quote returned from CoW API");
+      }
+
+      // Calculate bCSPX price in USD
+      // sellAmount is 12 USDC (6 decimals) = 12,000,000 wei
+      // buyAmount is bCSPX tokens (18 decimals)
+      const usdcAmount = parseFloat(quote.sellAmount) / 1e6; // Convert from USDC wei to USDC
+      const bcspxAmount = parseFloat(quote.buyAmount) / 1e18; // Convert from bCSPX wei to bCSPX tokens
+      
+      // 1 bCSPX = (USDC amount) / (bCSPX amount) USD
+      const bcspxUsdPrice = usdcAmount / bcspxAmount;
+
+      return {
+        price: bcspxUsdPrice,
+        timestamp: Date.now(),
+        roundId: data.id?.toString() || "cow-bcspx-quote",
+        decimals: 18,
+        description: "bCSPX / USD (via CoW Avalanche)",
+      };
+    } catch (error) {
+      console.error("Error fetching bCSPX price via CoW quote:", error);
+      return null;
+    }
+  }
+
   async getPrice(symbol: string): Promise<PriceData | null> {
     const cacheKey = symbol;
     const cached = this.priceCache.get(cacheKey);
@@ -219,6 +275,9 @@ export class ChainlinkPriceService {
         case "COW":
           priceData = await this.getCowUsdPriceViaQuote();
           break;
+        case "bCSPX":
+          priceData = await this.getBCSPXUsdPriceViaCowQuote();
+          break;
         default:
           console.warn(`Price feed not available for ${symbol}`);
           return null;
@@ -239,14 +298,14 @@ export class ChainlinkPriceService {
   }
 
   async getAllPrices(): Promise<Record<string, PriceData | null>> {
-    const [btcData, cowData] = await Promise.all([
+    const [btcData, bcspxData] = await Promise.all([
       this.getPrice("BTC"),
-      this.getPrice("COW"),
+      this.getPrice("bCSPX"),
     ]);
 
     return {
       BTC: btcData,
-      COW: cowData,
+      bCSPX: bcspxData,
     };
   }
 

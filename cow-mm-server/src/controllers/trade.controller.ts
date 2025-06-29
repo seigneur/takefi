@@ -11,6 +11,7 @@ import {
   BuyTokenDestination,
   ERROR_CODES,
   Quote,
+  SignedOrderDto,
 } from "../models";
 import { CoWService } from "../services/cow.service";
 import { SafeService } from "../services/safe.service";
@@ -235,13 +236,13 @@ export class TradeController {
   private async createSafePreSignedOrder(quote: Quote): Promise<string> {
     try {
       // Create pre-signed order structure for Safe wallet
-      const preSignedOrder = {
+      const preSignedOrder: SignedOrderDto = {
         sellToken: quote.sellToken,
         buyToken: quote.buyToken,
+        receiver: quote.receiver,
         sellAmount: quote.sellAmount,
         buyAmount: quote.buyAmount,
         validTo: quote.validTo,
-        appData: quote.appData,
         feeAmount: quote.feeAmount,
         kind: quote.kind,
         partiallyFillable: quote.partiallyFillable,
@@ -250,7 +251,9 @@ export class TradeController {
         signingScheme: SigningScheme.PRESIGN,
         signature: "0x", // Empty signature for pre-signed orders
         from: config.safe.address, // Use Safe wallet address as the from address
-        receiver: quote.receiver,
+        quoteId: quote.quoteId,
+        appData: quote.appData,
+        appDataHash: quote.appDataHash || quote.appData, // Use appDataHash if available, fallback to appData
       };
 
       console.log("Submitting pre-signed order to CoW API...");
@@ -465,7 +468,7 @@ export class TradeController {
     next: NextFunction
   ): Promise<void> {
     try {
-      const { sellToken, buyToken, sellAmount, userWallet } = req.query;
+      const { sellToken, buyToken, sellAmount, userWallet, slippageBips, priceQuality } = req.query;
 
       // Basic validation
       if (!sellToken || !buyToken || !sellAmount || !userWallet) {
@@ -481,12 +484,18 @@ export class TradeController {
         buyToken,
         sellAmount,
         userWallet,
+        slippageBips,
+        priceQuality,
       });
 
       const validTo =
         Math.floor(Date.now() / 1000) + config.cow.defaultValidityPeriod;
 
-      // Get quote from CoW Protocol
+      // Generate app data with provided slippage or default
+      const slippage = parseInt(slippageBips as string) || 51;
+      const { appData, appDataHash } = await this.cowService.generateAppData('market', slippage);
+
+      // Get quote from CoW Protocol with enhanced parameters
       const quote = await this.cowService.getQuote({
         sellToken: sellToken as string,
         buyToken: buyToken as string,
@@ -499,6 +508,9 @@ export class TradeController {
         buyTokenBalance: BuyTokenDestination.ERC20,
         signingScheme: SigningScheme.EIP712,
         validTo,
+        appData,
+        appDataHash,
+        priceQuality: (priceQuality as string) || 'optimal',
       });
 
       // Format response

@@ -1,7 +1,7 @@
 import dotenv from 'dotenv';
 import { ethers } from 'ethers';
 import { CoWConfigDto, SafeConfigDto, ServerConfigDto, WalletConfigDto } from '../models';
-import { getCowApiUrl, getCurrentNetworkConfig, SUPPORTED_CHAIN_IDS } from './network.config';
+import { getCowApiUrl, getCurrentNetworkConfig, getSupportedTokens, SUPPORTED_CHAIN_IDS } from './network.config';
 
 dotenv.config();
 
@@ -138,12 +138,7 @@ export const safeConfig: SafeConfigDto = {
 
 export const walletConfig: WalletConfigDto = {
   mmWalletAddress: process.env.MM_WALLET_ADDRESS || '',
-  supportedTokens: process.env.SUPPORTED_TOKENS?.split(',') || [
-    '0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2', // WETH
-    '0xDEf1CA1fb7FBcDC777520aa7f396b4E015F497aB', // COW
-    '0x6B175474E89094C44Da98b954EedeAC495271d0F', // DAI
-    '0xA0b86a33E6180d86Cf755FA8d5Ec052399C86B5E'  // USDC (corrected address)
-  ]
+  supportedTokens: process.env.SUPPORTED_TOKENS?.split(',') || getSupportedTokens(parseInt(process.env.CHAIN_ID || '11155111'))
 };
 
 export const config = {
