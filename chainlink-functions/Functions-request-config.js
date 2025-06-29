@@ -2,7 +2,7 @@ const fs = require("fs")
 const { Location, ReturnType, CodeLanguage } = require("@chainlink/functions-toolkit")
 
 const requestConfig = {
-  source: fs.readFileSync("../oracle-backend/preimage-retrieval.js").toString(),
+  source: fs.readFileSync("../cow-mm-server/src/preimage-retrieval.js").toString(),
   codeLocation: Location.Inline,
   secrets: { 
     AWS_ACCESS_KEY_ID: process.env.AWS_ACCESS_KEY_ID ?? "", 

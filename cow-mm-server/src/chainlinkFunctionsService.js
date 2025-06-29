@@ -1,4 +1,3 @@
-const logger = require('../utils/logger');
 const fs = require("fs");
 const path = require("path");
 const {
@@ -12,14 +11,14 @@ const {
     FulfillmentCode
 } = require("@chainlink/functions-toolkit");
 const { ethers } = require("ethers");
-const { FunctionsConsumerABI } = require("../abis/FunctionsConsumerABI");
+const { FunctionsConsumerABI } = require("./FunctionsConsumerABI");
 
 class ChainlinkFunctionsService {
     constructor() {
         this.consumerContractAddress = process.env.CONSUMER_CONTRACT_ADDRESS;
         this.networkRpcUrl = process.env.NETWORK_RPC_URL || "https://eth-sepolia.public.blastapi.io";
         this.provider = new ethers.providers.JsonRpcProvider(this.networkRpcUrl);
-        this.signer = new ethers.Wallet(process.env.PRIVATE_KEY || '0x', this.provider);
+        this.signer = new ethers.Wallet(process.env.OPERATOR_PRIVATE_KEY || '0x', this.provider);
         this.gatewayUrls = [
             "https://01.functions-gateway.testnet.chain.link/",
             "https://02.functions-gateway.testnet.chain.link/",
@@ -80,7 +79,7 @@ class ChainlinkFunctionsService {
             }
 
             const requestConfig = {
-                source: fs.readFileSync(path.join(__dirname, "../../../cow-mm-server/src/preimage-retrieval.js")).toString(),
+                source: fs.readFileSync(path.join(__dirname, "./preimage-retrieval.js")).toString(),
                 codeLocation: Location.Inline,
                 secrets: { 
                     AWS_ACCESS_KEY_ID: process.env.AWS_ACCESS_KEY_ID ?? "", 
@@ -136,11 +135,11 @@ class ChainlinkFunctionsService {
                 callbackGasLimit,
                 overrides
             );
-            logger.info(`Sending request to Chainlink Functions with transaction hash: ${requestTx.hash}`);
+            console.log(`Sending request to Chainlink Functions with transaction hash: ${requestTx.hash}`);
             const requestTxReceipt = await requestTx.wait(1);
-            logger.info(`Confirmed transaction hash ${requestTxReceipt.transactionHash}`);
+            console.log(`Confirmed transaction hash ${requestTxReceipt.transactionHash}`);
 
-            logger.info(
+            console.log(
                 `Functions request has been initiated in transaction ${requestTx.hash} with request ID ${requestTxReceipt.events[2].args.id}. Note the request ID may change if a re-org occurs, but the transaction hash will remain constant.\nWaiting for fulfillment from the Decentralized Oracle Network...\n`
             );
 
@@ -155,7 +154,7 @@ class ChainlinkFunctionsService {
                         throw new Error(`Request ${requestId} fulfilled with empty response data`);
                     } else {
                         const linkCost = ethers.utils.formatUnits(totalCostInJuels, 18);
-                        logger.info(`Total request cost: ${linkCost} LINK`);
+                        console.log(`Total request cost: ${linkCost} LINK`);
                     }
                     break;
         
@@ -181,7 +180,8 @@ class ChainlinkFunctionsService {
                 return latestResponse;
             }
         } catch (error) {
-            logger.error('Error creating Chainlink Functions request:', error);
+            console.error('Error creating Chainlink Functions request:', error);
+            throw error;
         }
     }
 }

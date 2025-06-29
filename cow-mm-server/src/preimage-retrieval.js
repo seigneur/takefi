@@ -96,7 +96,6 @@ try {
             const sellAmount = parseUint256(data.slice(128, 192));
             const buyAmount = parseUint256(data.slice(192, 256));
 
-            // Implement checks for address and amount
 
             return Functions.encodeString(secretObject.preimage);
         }
