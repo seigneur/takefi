@@ -4,13 +4,14 @@
 import * as bitcoin from 'bitcoinjs-lib'
 import { ECPairFactory } from 'ecpair'
 import * as ecc from 'tiny-secp256k1'
+import { getBitcoinNetwork, getBitcoinApiUrls, getBitcoinExplorerUrls, getCurrentBitcoinNetworkName } from './bitcoin-network.config'
 
 // Initialize libraries
 const ECPair = ECPairFactory(ecc)
 bitcoin.initEccLib(ecc)
 
-// Bitcoin network configuration
-const BITCOIN_NETWORK = bitcoin.networks.testnet // Use testnet for development
+// Bitcoin network configuration from centralized config
+const BITCOIN_NETWORK = getBitcoinNetwork()
 
 export interface BitcoinWallet {
   address: string
@@ -57,7 +58,7 @@ export class BitcoinWalletService {
         address,
         publicKey,
         privateKey,
-        network: 'testnet'
+        network: getCurrentBitcoinNetworkName()
       }
 
       // Store in localStorage for persistence
@@ -167,7 +168,7 @@ export class BitcoinWalletService {
         address,
         publicKey,
         privateKey: wifPrivateKey,
-        network: 'testnet'
+        network: getCurrentBitcoinNetworkName()
       }
 
       // Store in localStorage
@@ -195,7 +196,8 @@ export class BitcoinWalletService {
     
     try {
       // Use Blockstream API for balance check (same as oracle-backend)
-      const response = await fetch(`https://blockstream.info/testnet/api/address/${this.wallet.address}`)
+      const apiUrls = getBitcoinApiUrls()
+      const response = await fetch(`${apiUrls.blockstream}/address/${this.wallet.address}`)
       const data = await response.json()
       
       const balanceSats = data.chain_stats.funded_txo_sum - data.chain_stats.spent_txo_sum
@@ -237,7 +239,8 @@ export class BitcoinWalletService {
    * Get block explorer URL for address
    */
   static getExplorerUrl(address: string): string {
-    return `https://mempool.space/testnet/address/${address}`
+    const explorerUrls = getBitcoinExplorerUrls()
+    return `${explorerUrls.address}${address}`
   }
 }
 

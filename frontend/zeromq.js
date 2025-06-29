@@ -6,6 +6,7 @@ import { EventEmitter } from 'events';
 import fs from 'fs/promises';
 import path from 'path';
 import os from 'os';
+import { getBitcoinZmqConfig, getBitcoinRpcConfig } from './lib/bitcoin-network.config.ts';
 
 class BitcoinZMQListener extends EventEmitter {
   constructor() {
@@ -18,7 +19,8 @@ class BitcoinZMQListener extends EventEmitter {
     try {
       // Subscribe to new transactions
       const txSock = new zmq.Subscriber();
-      await txSock.connect('tcp://127.0.0.1:28332'); // ZMQ port for regtest
+      const zmqConfig = getBitcoinZmqConfig();
+      await txSock.connect(`tcp://${zmqConfig.host}:${zmqConfig.port}`);
       txSock.subscribe('rawtx');
 
       // Subscribe to new blocks
@@ -98,7 +100,8 @@ class BitcoinZMQListener extends EventEmitter {
   }
 
   async decodeRawTransaction(txHex) {
-    const response = await fetch('http://localhost:18443', {
+    const rpcConfig = getBitcoinRpcConfig();
+    const response = await fetch(`${rpcConfig.protocol}://${rpcConfig.host}:${rpcConfig.port}`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

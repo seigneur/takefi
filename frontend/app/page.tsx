@@ -25,9 +25,12 @@ import {
   Globe,
   Zap,
   ExternalLink,
+  QrCode,
+  Copy,
 } from "lucide-react";
 import { ChainlinkPriceTicker } from "@/components/chainlink-price-ticker";
 import BitcoinPaymentChecker from "@/components/bitcoin-payment-checker";
+import QRCode from "qrcode";
 
 // API imports
 import {
@@ -116,11 +119,13 @@ export default function Component() {
 
   // UI state
   const [showConfirmModal, setShowConfirmModal] = useState(false);
+  const [showQRModal, setShowQRModal] = useState(false);
+  const [qrCodeDataURL, setQrCodeDataURL] = useState("");
   const [swapProgress, setSwapProgress] = useState(swapSteps);
   const [currentStep, setCurrentStep] = useState(0);
   const [isSwapping, setIsSwapping] = useState(false);
   const [swapCompleted, setSwapCompleted] = useState(false);
-  
+
   // Order tracking data
   const [orderTrackingData, setOrderTrackingData] = useState<any>(null);
 
@@ -249,10 +254,10 @@ export default function Component() {
       // Get both swap details and order tracking
       const [swapDetails, orderTracking] = await Promise.all([
         oracleAPI.getSwapDetails(swapId),
-        oracleAPI.getOrderTracking(swapId).catch(error => {
+        oracleAPI.getOrderTracking(swapId).catch((error) => {
           console.warn("Order tracking not available yet:", error.message);
           return null;
-        })
+        }),
       ]);
 
       console.log("Swap status update:", swapDetails.data.status);
@@ -269,34 +274,34 @@ export default function Component() {
           updateSwapStep(2, "current");
           setCurrentStep(2);
           break;
-          
+
         case "btc_received":
           // BTC received, oracle processing
           updateSwapStep(2, "completed");
           updateSwapStep(3, "current");
           setCurrentStep(3);
           break;
-          
+
         case "order_submitted":
           // Order has been submitted to CoW Protocol
           updateSwapStep(2, "completed");
-          updateSwapStep(3, "completed");  
+          updateSwapStep(3, "completed");
           updateSwapStep(4, "current");
           setCurrentStep(4);
           break;
-          
+
         case "order_pending":
           // Order is live on CoW Protocol, waiting for execution
           updateSwapStep(4, "current");
           setCurrentStep(4);
           break;
-          
+
         case "order_partial":
           // Order partially filled
           updateSwapStep(4, "current");
           setCurrentStep(4);
           break;
-          
+
         case "completed":
           // Actually completed - tokens delivered!
           updateSwapStep(4, "completed");
@@ -310,11 +315,13 @@ export default function Component() {
             delete (window as any).swapPollInterval;
           }
           break;
-          
+
         case "order_failed":
         case "mm_failed":
           console.error("Order/MM failed:", swapDetails.data);
-          alert("Order failed to execute. This can happen on testnet due to low liquidity. Please try again or contact support.");
+          alert(
+            "Order failed to execute. This can happen on testnet due to low liquidity. Please try again or contact support."
+          );
           setIsSwapping(false);
           // Clear polling
           if ((window as any).swapPollInterval) {
@@ -322,7 +329,7 @@ export default function Component() {
             delete (window as any).swapPollInterval;
           }
           break;
-          
+
         case "expired":
           console.error("Swap expired");
           alert("Swap expired. Please create a new swap.");
@@ -405,12 +412,61 @@ export default function Component() {
     );
   };
 
-  const calculateOutput = (amount, rate) => {
-    return (Number.parseFloat(amount) * rate).toFixed(4);
+  const calculateOutput = (amount: string | number, rate: number) => {
+    return (Number.parseFloat(amount.toString()) * rate).toFixed(4);
   };
 
-  const formatCurrency = (amount, currency) => {
+  const formatCurrency = (amount: string | number, currency: string) => {
     return `${amount} ${currency}`;
+  };
+
+  // Generate QR Code for Bitcoin payment
+  const generateQRCode = async () => {
+    if (!htlcAddress || !btcAmount) return;
+
+    try {
+      // Create Bitcoin URI format based on network
+      // For testnet SegWit addresses (tb1...), use BIP 321 format
+      // For mainnet SegWit addresses (bc1...), use standard format
+      let bitcoinURI: string;
+
+      if (
+        htlcAddress.startsWith("tb1") ||
+        htlcAddress.startsWith("2") ||
+        htlcAddress.startsWith("m") ||
+        htlcAddress.startsWith("n")
+      ) {
+        // Testnet address - use BIP 321 format: bitcoin:?tb=address&amount=X
+        bitcoinURI = `bitcoin:?tb=${htlcAddress}&amount=${btcAmount}`;
+      } else {
+        // Mainnet address - use standard BIP 21 format: bitcoin:address?amount=X
+        bitcoinURI = `bitcoin:${htlcAddress}?amount=${btcAmount}`;
+      }
+
+      // Generate QR code as data URL
+      const qrDataURL = await QRCode.toDataURL(bitcoinURI, {
+        width: 256,
+        margin: 2,
+        color: {
+          dark: "#000000",
+          light: "#FFFFFF",
+        },
+      });
+
+      setQrCodeDataURL(qrDataURL);
+      setShowQRModal(true);
+    } catch (error) {
+      console.error("Error generating QR code:", error);
+    }
+  };
+
+  // Copy address to clipboard
+  const copyToClipboard = async (text: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch (error) {
+      console.error("Failed to copy to clipboard:", error);
+    }
   };
 
   return (
@@ -624,14 +680,14 @@ export default function Component() {
                         Array.from({ length: 3 }).map((_, i) => (
                           <Card
                             key={i}
-                            className="bg-white/5 border-white/10 animate-pulse"
+                            className="bg-gray-800/60 border-gray-700/50 animate-pulse backdrop-blur-sm"
                           >
                             <CardContent className="p-4">
-                              <div className="h-4 bg-white/10 rounded mb-2" />
-                              <div className="h-6 bg-white/10 rounded mb-3" />
+                              <div className="h-4 bg-gray-600/40 rounded mb-2" />
+                              <div className="h-6 bg-gray-600/40 rounded mb-3" />
                               <div className="space-y-2">
-                                <div className="h-3 bg-white/10 rounded" />
-                                <div className="h-3 bg-white/10 rounded w-3/4" />
+                                <div className="h-3 bg-gray-600/40 rounded" />
+                                <div className="h-3 bg-gray-600/40 rounded w-3/4" />
                               </div>
                             </CardContent>
                           </Card>
@@ -643,41 +699,43 @@ export default function Component() {
                             whileTap={{ scale: 0.98 }}
                           >
                             <Card
-                              className={`cursor-pointer transition-all duration-200 ${
+                              className={`cursor-pointer transition-all duration-200 backdrop-blur-sm ${
                                 offer.isBest
-                                  ? "bg-gradient-to-br from-orange-500/20 to-purple-500/20 border-orange-500/50 ring-2 ring-orange-500/30"
-                                  : "bg-white/5 border-white/10 hover:bg-white/10"
+                                  ? "bg-gradient-to-br from-orange-900/80 to-purple-900/80 border-orange-400/70 ring-2 ring-orange-400/50 shadow-lg shadow-orange-500/20"
+                                  : offer.mmName.includes("Demo MM")
+                                  ? "bg-gradient-to-br from-slate-800/85 to-purple-900/70 border-purple-400/40 hover:bg-gradient-to-br hover:from-slate-700/90 hover:to-purple-800/80 hover:border-purple-300/50"
+                                  : "bg-gradient-to-br from-slate-800/80 to-gray-900/80 border-slate-600/50 hover:bg-gradient-to-br hover:from-slate-700/85 hover:to-gray-800/85 hover:border-slate-500/60"
                               } ${
                                 selectedOffer?.id === offer.id
-                                  ? "ring-2 ring-blue-500/50"
+                                  ? "ring-2 ring-blue-400/70 border-blue-400/60"
                                   : ""
                               }`}
                               onClick={() => setSelectedOffer(offer)}
                             >
                               <CardContent className="p-4">
-                                <div className="flex items-center justify-between mb-2">
-                                  <span className="font-medium text-white">
+                                <div className="flex items-center justify-between mb-3">
+                                  <span className="font-semibold text-white text-base">
                                     {offer.mmName}
                                   </span>
                                   <div className="flex items-center space-x-2">
-                                    {offer.realTimeRate && (
+                                    {offer.rate && (
                                       <Badge
                                         variant="outline"
-                                        className="bg-green-500/20 text-green-400 border-green-500/30 text-xs"
+                                        className="bg-green-500/30 text-green-300 border-green-400/50 text-xs font-medium"
                                       >
                                         Live
                                       </Badge>
                                     )}
-                                    {offer.mmName.includes("Demo MM") && (
+                                    {/* {offer.mmName.includes("Demo MM") && (
                                       <Badge
                                         variant="outline"
-                                        className="bg-yellow-500/20 text-yellow-400 border-yellow-500/30 text-xs"
+                                        className="bg-yellow-500/30 text-yellow-300 border-yellow-400/50 text-xs font-medium"
                                       >
                                         Demo
                                       </Badge>
-                                    )}
+                                    )} */}
                                     {offer.isBest && (
-                                      <Badge className="bg-orange-500/20 text-orange-400 border-orange-500/30">
+                                      <Badge className="bg-orange-500/30 text-orange-300 border-orange-400/50 font-medium">
                                         <Zap className="h-3 w-3 mr-1" />
                                         Best
                                       </Badge>
@@ -685,20 +743,22 @@ export default function Component() {
                                   </div>
                                 </div>
 
-                                <div className="space-y-2 text-sm">
-                                  <div className="flex justify-between">
-                                    <span className="text-gray-400">Rate:</span>
-                                    <span className="text-white font-medium">
+                                <div className="space-y-2.5 text-sm">
+                                  <div className="flex justify-between items-center">
+                                    <span className="text-gray-300 font-medium">
+                                      Rate:
+                                    </span>
+                                    <span className="text-white font-semibold">
                                       {offer.rate.toFixed(6)} COW/BTC
                                     </span>
                                   </div>
 
                                   {btcAmount && (
-                                    <div className="flex justify-between">
-                                      <span className="text-gray-400">
+                                    <div className="flex justify-between items-center">
+                                      <span className="text-gray-300 font-medium">
                                         You get:
                                       </span>
-                                      <span className="text-green-400 font-medium">
+                                      <span className="text-green-300 font-semibold">
                                         {calculateOutput(btcAmount, offer.rate)}{" "}
                                         COW
                                       </span>
@@ -706,11 +766,11 @@ export default function Component() {
                                   )}
 
                                   {btcAmount && cowPrice > 0 && (
-                                    <div className="flex justify-between">
-                                      <span className="text-gray-400">
+                                    <div className="flex justify-between items-center">
+                                      <span className="text-gray-300 font-medium">
                                         USD Value:
                                       </span>
-                                      <span className="text-blue-400 font-medium">
+                                      <span className="text-blue-300 font-semibold">
                                         $
                                         {(
                                           Number.parseFloat(
@@ -724,25 +784,29 @@ export default function Component() {
                                     </div>
                                   )}
 
-                                  <div className="flex justify-between">
-                                    <span className="text-gray-400">Fee:</span>
-                                    <span className="text-white">
+                                  <div className="flex justify-between items-center">
+                                    <span className="text-gray-300 font-medium">
+                                      Fee:
+                                    </span>
+                                    <span className="text-white font-semibold">
                                       {offer.fee}%
                                     </span>
                                   </div>
 
-                                  <div className="flex justify-between">
-                                    <span className="text-gray-400">Time:</span>
-                                    <span className="text-white">
+                                  <div className="flex justify-between items-center">
+                                    <span className="text-gray-300 font-medium">
+                                      Time:
+                                    </span>
+                                    <span className="text-white font-semibold">
                                       {offer.estimatedTime}
                                     </span>
                                   </div>
 
-                                  <div className="flex justify-between">
-                                    <span className="text-gray-400">
+                                  <div className="flex justify-between items-center">
+                                    <span className="text-gray-300 font-medium">
                                       Reliability:
                                     </span>
-                                    <span className="text-green-400">
+                                    <span className="text-green-300 font-semibold">
                                       {offer.reliability}%
                                     </span>
                                   </div>
@@ -799,23 +863,33 @@ export default function Component() {
                     <p className="text-gray-400">
                       Swap ID: {realSwapId || "Creating..."}
                     </p>
-                    
+
                     {/* Order Tracking Status */}
                     {orderTrackingData && (
                       <div className="flex items-center gap-2 text-xs">
                         <span className="text-gray-400">Tracking:</span>
-                        <Badge variant="outline" className={`${
-                          orderTrackingData.tracking.method === 'websocket' 
-                            ? 'bg-green-500/20 text-green-400 border-green-500/30' 
-                            : 'bg-blue-500/20 text-blue-400 border-blue-500/30'
-                        }`}>
-                          {orderTrackingData.tracking.method === 'websocket' ? '🔴 Live' : '🔄 Polling'}
+                        <Badge
+                          variant="outline"
+                          className={`${
+                            orderTrackingData.tracking.method === "websocket"
+                              ? "bg-green-500/20 text-green-400 border-green-500/30"
+                              : "bg-blue-500/20 text-blue-400 border-blue-500/30"
+                          }`}
+                        >
+                          {orderTrackingData.tracking.method === "websocket"
+                            ? "🔴 Live"
+                            : "🔄 Polling"}
                         </Badge>
                         {orderTrackingData.explorerUrl && (
                           <Button
                             size="sm"
                             variant="ghost"
-                            onClick={() => window.open(orderTrackingData.explorerUrl, '_blank')}
+                            onClick={() =>
+                              window.open(
+                                orderTrackingData.explorerUrl,
+                                "_blank"
+                              )
+                            }
                             className="h-5 px-2 text-xs"
                           >
                             <ExternalLink className="h-3 w-3 mr-1" />
@@ -824,12 +898,32 @@ export default function Component() {
                         )}
                       </div>
                     )}
-                    
+
                     {htlcAddress && (
                       <div className="bg-orange-500/10 border border-orange-500/20 rounded-lg p-3">
-                        <p className="text-orange-400 font-semibold text-sm">
-                          🎯 Send Bitcoin to:
-                        </p>
+                        <div className="flex items-center justify-between mb-2">
+                          <p className="text-orange-400 font-semibold text-sm">
+                            🎯 Send Bitcoin to:
+                          </p>
+                          <div className="flex items-center space-x-2">
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => copyToClipboard(htlcAddress)}
+                              className="h-6 w-6 p-0 text-orange-400 hover:text-orange-300 hover:bg-orange-500/20"
+                            >
+                              <Copy className="h-3 w-3" />
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={generateQRCode}
+                              className="h-6 w-6 p-0 text-orange-400 hover:text-orange-300 hover:bg-orange-500/20"
+                            >
+                              <QrCode className="h-3.5 w-3.5" />
+                            </Button>
+                          </div>
+                        </div>
                         <p className="text-white font-mono text-xs break-all">
                           {htlcAddress}
                         </p>
@@ -842,7 +936,7 @@ export default function Component() {
                 </CardHeader>
                 <CardContent className="space-y-6">
                   <div className="space-y-4">
-                    {swapProgress.map((step, index) => {
+                    {swapProgress.map((step) => {
                       const Icon = step.icon;
                       return (
                         <div
@@ -954,7 +1048,8 @@ export default function Component() {
                     Swap Completed Successfully! 🎉
                   </h2>
                   <p className="text-gray-300 mb-6">
-                    Your Bitcoin has been swapped and tokens have been delivered to your wallet.
+                    Your Bitcoin has been swapped and tokens have been delivered
+                    to your wallet.
                   </p>
 
                   {/* Trade Details */}
@@ -962,24 +1057,38 @@ export default function Component() {
                     <div className="grid grid-cols-2 gap-4 text-sm">
                       <div>
                         <p className="text-gray-400">Swapped</p>
-                        <p className="text-white font-medium">{btcAmount} BTC</p>
+                        <p className="text-white font-medium">
+                          {btcAmount} BTC
+                        </p>
                       </div>
                       <div>
                         <p className="text-gray-400">Received</p>
                         <p className="text-green-400 font-medium">
-                          {orderTrackingData?.executedAmounts?.buy ? 
-                            `${(parseFloat(orderTrackingData.executedAmounts.buy) / 1e18).toFixed(4)} COW` :
-                            `${selectedOffer ? calculateOutput(btcAmount, selectedOffer.rate) : "0"} COW`
-                          }
+                          {orderTrackingData?.executedAmounts?.buy
+                            ? `${(
+                                parseFloat(
+                                  orderTrackingData.executedAmounts.buy
+                                ) / 1e18
+                              ).toFixed(4)} COW`
+                            : `${
+                                selectedOffer
+                                  ? calculateOutput(
+                                      btcAmount,
+                                      selectedOffer.rate
+                                    )
+                                  : "0"
+                              } COW`}
                         </p>
                       </div>
                       <div>
                         <p className="text-gray-400">Transaction</p>
                         <p className="text-white font-mono text-xs">
-                          {orderTrackingData?.txHash ? 
-                            `${orderTrackingData.txHash.slice(0, 10)}...${orderTrackingData.txHash.slice(-6)}` : 
-                            'Processing'
-                          }
+                          {orderTrackingData?.txHash
+                            ? `${orderTrackingData.txHash.slice(
+                                0,
+                                10
+                              )}...${orderTrackingData.txHash.slice(-6)}`
+                            : "Processing"}
                         </p>
                       </div>
                       <div>
@@ -996,18 +1105,25 @@ export default function Component() {
                     {/* CoW Explorer Link */}
                     {orderTrackingData?.explorerUrl && (
                       <Button
-                        onClick={() => window.open(orderTrackingData.explorerUrl, '_blank')}
+                        onClick={() =>
+                          window.open(orderTrackingData.explorerUrl, "_blank")
+                        }
                         className="w-full bg-gradient-to-r from-purple-500 to-blue-600 hover:from-purple-600 hover:to-blue-700"
                       >
                         <ExternalLink className="h-4 w-4 mr-2" />
                         View on CoW Protocol Explorer
                       </Button>
                     )}
-                    
+
                     {/* Transaction Hash Link */}
                     {orderTrackingData?.txHash && (
                       <Button
-                        onClick={() => window.open(`https://sepolia.etherscan.io/tx/${orderTrackingData.txHash}`, '_blank')}
+                        onClick={() =>
+                          window.open(
+                            `https://sepolia.etherscan.io/tx/${orderTrackingData.txHash}`,
+                            "_blank"
+                          )
+                        }
                         variant="outline"
                         className="w-full bg-white/10 border-white/20 text-white hover:bg-white/20"
                       >
@@ -1018,9 +1134,12 @@ export default function Component() {
 
                     {/* Token Import Helper */}
                     <div className="bg-blue-500/10 border border-blue-500/20 rounded-lg p-4 text-left">
-                      <p className="text-blue-400 font-semibold mb-2">📱 Add Token to Wallet</p>
+                      <p className="text-blue-400 font-semibold mb-2">
+                        📱 Add Token to Wallet
+                      </p>
                       <p className="text-sm text-gray-300 mb-2">
-                        If tokens don't appear automatically, import this contract:
+                        If tokens don't appear automatically, import this
+                        contract:
                       </p>
                       <div className="bg-black/30 rounded p-2 flex items-center justify-between">
                         <code className="text-xs text-green-400 font-mono">
@@ -1029,7 +1148,11 @@ export default function Component() {
                         <Button
                           size="sm"
                           variant="ghost"
-                          onClick={() => navigator.clipboard.writeText('0x0625aFB445C3B6B7B929342a04A22599fd5dBB59')}
+                          onClick={() =>
+                            navigator.clipboard.writeText(
+                              "0x0625aFB445C3B6B7B929342a04A22599fd5dBB59"
+                            )
+                          }
                           className="h-6 px-2"
                         >
                           Copy
@@ -1142,6 +1265,97 @@ export default function Component() {
                 </div>
               </div>
             )}
+          </DialogContent>
+        </Dialog>
+
+        {/* QR Code Modal */}
+        <Dialog open={showQRModal} onOpenChange={setShowQRModal}>
+          <DialogContent className="bg-slate-900/95 backdrop-blur-md border-white/20 text-white">
+            <DialogHeader>
+              <DialogTitle className="text-xl flex items-center gap-2">
+                <QrCode className="h-5 w-5 text-orange-400" />
+                Bitcoin Payment QR Code
+              </DialogTitle>
+            </DialogHeader>
+
+            <div className="space-y-4">
+              {/* Payment Details */}
+              <div className="bg-orange-500/10 border border-orange-500/20 rounded-lg p-4">
+                <div className="space-y-2 text-sm">
+                  <div className="flex justify-between">
+                    <span className="text-gray-400">Amount:</span>
+                    <span className="text-white font-semibold">
+                      {btcAmount} BTC
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-400">Network:</span>
+                    <span className="text-white font-semibold">
+                      {htlcAddress?.startsWith("tb1") ||
+                      htlcAddress?.startsWith("2") ||
+                      htlcAddress?.startsWith("m") ||
+                      htlcAddress?.startsWith("n")
+                        ? "Testnet"
+                        : "Mainnet"}
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-400">Address:</span>
+                    <span className="text-white font-mono text-xs break-all">
+                      {htlcAddress}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* QR Code */}
+              {qrCodeDataURL && (
+                <div className="flex flex-col items-center space-y-4">
+                  <div className="bg-white p-4 rounded-lg">
+                    <img
+                      src={qrCodeDataURL}
+                      alt="Bitcoin Payment QR Code"
+                      className="w-64 h-64"
+                    />
+                  </div>
+                  <p className="text-xs text-gray-400 text-center">
+                    Scan with your Bitcoin wallet to pay {btcAmount} BTC
+                  </p>
+                </div>
+              )}
+
+              {/* Instructions */}
+              <div className="bg-blue-500/10 border border-blue-500/20 rounded-lg p-3">
+                <h4 className="text-blue-400 font-semibold text-sm mb-2">
+                  Payment Instructions:
+                </h4>
+                <ul className="text-xs text-gray-300 space-y-1">
+                  <li>• Open your Bitcoin wallet app</li>
+                  <li>• Scan the QR code above</li>
+                  <li>• Verify the amount and address</li>
+                  <li>• Send the payment</li>
+                  <li>• Wait for confirmation</li>
+                </ul>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex gap-3 pt-4">
+                <Button
+                  variant="outline"
+                  onClick={() => copyToClipboard(htlcAddress)}
+                  className="flex-1 bg-white/10 border-white/20 text-white hover:bg-white/20"
+                >
+                  <Copy className="h-4 w-4 mr-2" />
+                  Copy Address
+                </Button>
+                <Button
+                  onClick={() => setShowQRModal(false)}
+                  className="flex-1 bg-gradient-to-r from-orange-500 to-purple-600 hover:from-orange-600 hover:to-purple-700"
+                >
+                  Close
+                </Button>
+              </div>
+            </div>
           </DialogContent>
         </Dialog>
       </div>

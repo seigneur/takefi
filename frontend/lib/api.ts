@@ -101,9 +101,10 @@ export class OracleAPI {
       const mmPubkey =
         "026477115981fe981a6918a6297d9803c4dc04f328f22041bedff886bbc2962e01";
 
-      // TEMPORARY: Hardcoded Bitcoin testnet address for testing
-      const hardcodedBtcAddress =
-        "tb1pelx8g8d4xs8clm4pjvgks6chhsm20hslq5dycwnme6mg0f3j22wsmefggc";
+      // TEMPORARY: Use test address from centralized config for testing
+      const { getBitcoinTestAddresses } = await import('./bitcoin-network.config')
+      const testAddresses = getBitcoinTestAddresses()
+      const hardcodedBtcAddress = testAddresses.p2tr;
 
       const payload = {
         userBtcAddress: hardcodedBtcAddress, // Hardcoded for testing

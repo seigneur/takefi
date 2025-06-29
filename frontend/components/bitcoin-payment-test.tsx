@@ -1,16 +1,18 @@
 import React from 'react';
 import BitcoinPaymentChecker from './bitcoin-payment-checker';
+import { getBitcoinTestAddresses } from '@/lib/bitcoin-network.config';
 
 /**
  * Simple test component to demonstrate Bitcoin payment monitoring
  * Use this to test the WebSocket integration without complex UI
  */
 export default function BitcoinPaymentTest() {
-  // Example Bitcoin regtest addresses for testing
-  const testAddresses = [
-    "bcrt1qw508d6qejxtdg4y5r3zarvary0c5xw7kyxl7v6",
-    "bcrt1qrp33g3q4yunsez6tey2dd3zfg5tgy8c4v9et6zyt0hp8w9p2h7xs8gp0zj",
-    "bcrt1qw5km7tqvq5j5yp2lk5z3j5z8r7jz8c5c3k4g2h"
+  // Example Bitcoin addresses for testing from centralized config
+  const testAddresses = getBitcoinTestAddresses();
+  const testAddressList = [
+    testAddresses.p2wpkh,
+    testAddresses.p2tr,
+    "bcrt1qw5km7tqvq5j5yp2lk5z3j5z8r7jz8c5c3k4g2h" // Additional test address
   ];
 
   return (
@@ -24,7 +26,7 @@ export default function BitcoinPaymentTest() {
         </p>
 
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-          {testAddresses.map((address, index) => (
+          {testAddressList.map((address, index) => (
             <div key={address} className="bg-white/10 backdrop-blur-md border border-white/20 rounded-lg p-4">
               <h3 className="text-lg font-semibold text-white mb-2">
                 Monitor #{index + 1}

@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { ExternalLink, RefreshCw } from "lucide-react";
+import { getBitcoinExplorerUrls } from "@/lib/bitcoin-network.config";
 
 interface PaymentData {
   txid: string;
@@ -124,8 +125,9 @@ const BitcoinPaymentChecker: React.FC<BitcoinPaymentCheckerProps> = ({
   };
 
   const openExplorer = () => {
+    const explorerUrls = getBitcoinExplorerUrls();
     window.open(
-      `https://mempool.space/testnet/address/${walletAddress}`,
+      `${explorerUrls.address}${walletAddress}`,
       "_blank"
     );
   };
