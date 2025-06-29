@@ -19,10 +19,9 @@ class ChainlinkFunctionsService {
         this.networkRpcUrl = process.env.NETWORK_RPC_URL || "https://eth-sepolia.public.blastapi.io";
         this.provider = new ethers.providers.JsonRpcProvider(this.networkRpcUrl);
         this.signer = new ethers.Wallet(process.env.OPERATOR_PRIVATE_KEY || '0x', this.provider);
-        this.gatewayUrls = [
-            "https://01.functions-gateway.testnet.chain.link/",
-            "https://02.functions-gateway.testnet.chain.link/",
-        ];
+        this.gatewayUrls = process.env.IS_PRODUCTION === "true"
+            ? ["https://01.functions-gateway.chain.link/", "https://02.functions-gateway.chain.link/"]
+            : ["https://01.functions-gateway.testnet.chain.link/", "https://02.functions-gateway.testnet.chain.link/"]
         this.linkTokenAddress = process.env.LINK_TOKEN_ADDRESS;
         this.functionsRouterAddress = process.env.FUNCTIONS_ROUTER_ADDRESS;
         this.donId = process.env.DON_ID || "fun-ethereum-sepolia-1";
