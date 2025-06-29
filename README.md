@@ -1,4 +1,8 @@
-# Takefi - Bitcoin Cross-Chain Oracle for RWA Token Swaps
+# TakeFi - Bitcoin Cross-Chain Oracle for RWA Token Swaps
+
+![Takefi Cover](./cover-image.jpg)
+
+<br/>
 
 ## Overview
 
@@ -6,23 +10,35 @@ This project implements a trustless cross-chain swap mechanism that allows users
 
 We utilized existing RWA tokens on Avalanche using backed.fi assets. This project shows how we can leverage HTLC's to bring liquidity from Bitcoin to Avalanche without the need for wrapped tokens, thus avoiding minting and burning fees.
 
-## Sponsors used - 
-#### Chainlink Functions
-We were able to use chainlink function as the glue to make this cross chain RWA swap possible.
+## Sponsors used
 
-https://functions.chain.link/avalanche/38
-Relevant Files - 
-cow-mm-server/preimage-retrieval.js
-cow-mm-server/getPreimageAndRedeem.js
-chainlink-functions/contracts/FunctionsConsumer.sol
+#### Chainlink
+
+1. Chainlink Functions
+
+We were able to use Chainlink Functions as the glue to make this cross chain RWA swap possible. <br/>
+Subscription on Avalanche: https://functions.chain.link/avalanche/38
+
+Relevant Files: [preimage-retrieval.js](cow-mm-server/preimage-retrieval.js), [chainlinkFunctionsService.js](cow-mm-server/chainlinkFunctionsService.js) [getPreimageAndRedeem.js](cow-mm-server/getPreimageAndRedeem.js), [FunctionsConsumer.sol](chainlink-functions/contracts/FunctionsConsumer.sol)
+
+2. Chainlink Data Feeds
+
+Price feed is used for accurate real-time BTC and RWA token price rates.
+
+Relevant Files: [chainlink.ts](frontend/lib/chainlink.ts), [chainlink-price-ticker.tsx](frontend/components/chainlink-price-ticker.tsx), [page.tsx](frontend/app/page.tsx)
 
 #### Avalanche
+
+Avalanche is used as the destination chain for cross-chain swaps from native Bitcoin to tokenized Real-World Assets (RWAs). We have leveraged existing RWA tokens on Avalanche (such as those issued via Backed.fi) and deployed our Chainlink Functions consumer contract on the Avalanche C-chain mainnet and Fuji testnet.
+
+Functions consumer contract on Avalanche C-chain <br/>
+https://snowtrace.io/address/0x810a52Bbd315C5B493fdd417b3f8b36e23226324
 https://snowtrace.io/tx/0x1305b509274ab13e948baeb74e5f2391e8575c4fcc948a63012bbeecc0955fdf
-https://snowtrace.io/address/0x810a52Bbd315C5B493fdd417b3f8b36e23226324 --> Contract deployed on Avalanche for functions consumer
+https://testnet.snowtrace.io/address/0x810a52Bbd315C5B493fdd417b3f8b36e23226324
 
 #### AWS
+
 We utilized AWS Secrets Manager to securely store and manage sensitive data such as preimages used in the HTLCs.
-oracle-backend/src/controllers/oracleController.js
 
 ## Architecture
 
