@@ -12,6 +12,10 @@ const {
 } = require("@chainlink/functions-toolkit");
 const { ethers } = require("ethers");
 const { FunctionsConsumerABI } = require("./FunctionsConsumerABI");
+const dotenv = require("dotenv");
+dotenv.config();
+
+console.log("Initializing Chainlink Functions Service...", process.env.OPERATOR_PRIVATE_KEY);
 
 class ChainlinkFunctionsService {
     constructor() {

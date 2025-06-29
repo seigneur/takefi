@@ -1,4 +1,6 @@
 const bitcoin = require('bitcoinjs-lib');
+const dotenv = require('dotenv');
+dotenv.config();
 
 const BITCOIN_NETWORKS = {
   mainnet: {
@@ -54,8 +56,8 @@ const BITCOIN_NETWORKS = {
       host: process.env.BITCOIN_RPC_HOST || '172.30.112.1',
       port: parseInt(process.env.BITCOIN_RPC_PORT || '18443'),
       protocol: process.env.BITCOIN_RPC_PROTOCOL || 'http',
-      username: process.env.BITCOIN_RPC_USERNAME || 'user',
-      password: process.env.BITCOIN_RPC_PASSWORD || 'password'
+      username: process.env.BITCOIN_RPC_USERNAME || 'devuser',
+      password: process.env.BITCOIN_RPC_PASSWORD || 'devpass'
     },
     apiUrls: {
       blockstream: 'http://localhost:3000/api',
@@ -74,7 +76,7 @@ const BITCOIN_NETWORKS = {
 
 function getBitcoinNetworkConfig(networkType = null) {
   const network = networkType || process.env.BITCOIN_NETWORK || 'testnet';
-  
+  console.log(`Using Bitcoin network: ${process.env.BITCOIN_NETWORK}`);
   if (!BITCOIN_NETWORKS[network]) {
     throw new Error(`Unsupported Bitcoin network: ${network}. Supported networks: ${Object.keys(BITCOIN_NETWORKS).join(', ')}`);
   }

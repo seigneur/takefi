@@ -1,6 +1,8 @@
 const BitcoinRPCClient = require('./bitcoin-rpc');
 const axios = require('axios');
 const readline = require('readline');
+require('dotenv').config(); // Load environment variables from .env file
+
 
 const ORACLE_BASE_URL = 'http://localhost:3001';
 
@@ -205,8 +207,10 @@ class HTLCIntegrationTest {
     }
 
     async createPreimageViaOracle(userBtcAddress, mmPubkey, btcAmount, timelock) {
+        const userEthWallet = process.env.ETH_WALLET_ADDRESS || '0x6E59B243B9A534E63E39a7debb6658d5A4806A8C';
         const response = await axios.post(`${ORACLE_BASE_URL}/api/oracle/create-preimage`, {
             userBtcAddress,
+            userEthWallet,
             mmPubkey,
             btcAmount,
             timelock

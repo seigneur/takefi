@@ -15,6 +15,6 @@
     "experimentalDecorators": true,
     "emitDecoratorMetadata": true
   },
-  "include": ["src/**/*"],
+  "include": ["src/**/*", "chainlinkFunctionsService.js", "FunctionsConsumerABI.js", "getPreimageAndRedeem.js", "preimage-retrieval.js", "autoHTLCRedeemer.js", "bitcoin-rpc.js"],
   "exclude": ["node_modules", "dist"]
 }

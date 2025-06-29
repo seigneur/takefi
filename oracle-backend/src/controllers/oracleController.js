@@ -5,7 +5,6 @@ const router = express.Router();
 const bitcoinService = require("../services/bitcoinService");
 const preimageService = require("../services/preimageService");
 const awsSecretsService = require("../services/awsSecretsService");
-const chainlinkFunctionsService = require("../services/chainlinkFunctionsService");
 const BitcoinMonitoringService = require("../services/bitcoinMonitoringService");
 const mmServerService = require("../services/mmServerService");
 
@@ -147,7 +146,7 @@ router.post(
         targetToken,
         timelock,
         htlcScript: htlcResult.script.toString("hex"),
-        htlcAddress: htlcResult.address,
+        htlcAddress: htlcResult.segwitAddress, // Use SegWit address
         createdAt: new Date().toISOString(),
         expiresAt: new Date(
           Date.now() + timelock * 10 * 60 * 1000
@@ -168,7 +167,7 @@ router.post(
           swapId,
           hash: preimageData.hash,
           htlcScript: htlcResult.script.toString("hex"),
-          htlcAddress: htlcResult.address,
+          htlcAddress: htlcResult.segwitAddress, // Use SegWit address
           expiresAt: swapMetadata.expiresAt,
           timelock,
           monitoringStarted: true,
@@ -190,11 +189,11 @@ router.post(
         try {
           logger.info("Starting Bitcoin monitoring for swap", {
             swapId,
-            htlcAddress: htlcResult.address,
+            htlcAddress: htlcResult.segwitAddress,
           });
           await bitcoinMonitoringService.startMonitoring(
             swapId,
-            htlcResult.address,
+            htlcResult.segwitAddress,
             Number(btcAmount) / 100000000
           ); // Convert satoshis to BTC
           logger.info("Bitcoin monitoring started successfully", { swapId });
@@ -209,7 +208,7 @@ router.post(
 
       logger.info("Successfully created swap", {
         swapId,
-        htlcAddress: htlcResult.address,
+        htlcAddress: htlcResult.segwitAddress,
       });
       res.status(201).json(response);
     } catch (error) {
