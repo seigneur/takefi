@@ -5,9 +5,10 @@ const router = express.Router();
 const PublicBitcoinRPCClient = require('../../bitcoin-rpc-public');
 const logger = require('../utils/logger');
 const { validateRequest } = require('../middleware/validation');
+const { getCurrentBitcoinNetwork } = require('../config/bitcoin-network.config');
 
-// Initialize Bitcoin RPC client
-const bitcoinRPC = new PublicBitcoinRPCClient({ network: 'testnet' });
+// Initialize Bitcoin RPC client with centralized network config
+const bitcoinRPC = new PublicBitcoinRPCClient({ network: getCurrentBitcoinNetwork().name });
 
 /**
  * @route GET /api/bitcoin/check-payment/:address
